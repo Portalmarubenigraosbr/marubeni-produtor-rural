@@ -1,0 +1,20 @@
+MARUBENI — PROJETO FIREBASE (VERSÃO INICIAL DE INTEGRAÇÃO)
+
+1) Firebase Console > Authentication > Sign-in method: habilitar Email/Password E Anonymous.
+2) Authentication > Users: cadastrar contabil-fiscal@marubenigraos.com com NOVA senha forte.
+   Verificar o e-mail dessa conta (emailVerified=true). O painel exige e-mail verificado.
+3) Firebase Console > Firestore Database: criar o banco em modo de produção.
+4) Instalar Node.js e Firebase CLI: npm install -g firebase-tools
+5) Na pasta deste projeto: firebase login
+6) Publicar regras: firebase deploy --only firestore:rules --project marubeni-produtor-rural
+7) Publicar site: firebase deploy --only hosting --project marubeni-produtor-rural
+8) Abrir https://marubeni-produtor-rural.web.app
+
+ATENÇÃO:
+- Não use a senha antiga de demonstração. O Firebase Auth gerencia a senha.
+- O produtor entra anonimamente e só poderá recuperar seu cadastro no mesmo navegador enquanto a identidade anônima for preservada. Para continuidade entre dispositivos, será necessário login de produtor ou link de acesso seguro.
+- O painel recebe cadastros de todos os produtores em tempo real. Os produtores não podem listar os cadastros de terceiros.
+- Firestore não deve ficar com regras de teste abertas.
+- Testar fluxo em ambiente controlado antes de coletar CPF/CNPJ real, inclusive LGPD, política de retenção, consentimento, limites de tamanho e trilha de auditoria.
+- Esta entrega NÃO foi implantada no projeto Firebase; é preciso executar o deploy.
+- O HTML continua com cache local como contingência; a nuvem é a fonte de verdade para o Fiscal.
