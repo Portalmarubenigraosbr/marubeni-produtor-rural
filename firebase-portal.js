@@ -3,7 +3,8 @@ import {getAuth, onAuthStateChanged, signInAnonymously, signInWithEmailAndPasswo
 import {getFirestore, doc, setDoc, updateDoc, onSnapshot, serverTimestamp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import {firebaseConfig, FISCAL_EMAIL} from './firebase-config.js';
 const app=initializeApp(firebaseConfig), auth=getAuth(app), db=getFirestore(app);
-let user=null, fiscal=false, draftTimer=null, statusUnsub=null, pendingSave=null;
+let user=null, fiscal=false, draftTimer=null, statusUnsub=null, pendingSave=Promise.resolve();
+const savedIds=new Set();
 window.rtcAuthenticated=false;
 const isFiscal=u=>!!u&&!u.isAnonymous&&u.email?.toLowerCase()===FISCAL_EMAIL&&u.emailVerified;
 const el=id=>document.getElementById(id);
@@ -27,19 +28,29 @@ async function saveRecord(record,final){
  if(!user||fiscal||!record?.id)throw Error('A autenticação do produtor ainda não está pronta.');
  const ref=doc(db,'entrevistas',record.id);
  const status=final?'Pendente Fiscal':'Rascunho';
- // Não consulte previamente documentos inexistentes: as regras restringem get ao proprietário.
- try {
-  await setDoc(ref,{ownerUid:user.uid,answers:record,status,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),fiscal:{}});
- } catch(e) {
-  if(e.code!=='permission-denied')throw e;
-  // Se o documento já existe e pertence ao usuário, atualize apenas os campos permitidos.
-  // As regras do Firestore recusam alterações de documentos de outros produtores.
+ if(savedIds.has(record.id)){
   await updateDoc(ref,{answers:record,status,updatedAt:serverTimestamp()});
+ }else{
+  try{
+   await setDoc(ref,{ownerUid:user.uid,answers:record,status,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),fiscal:{}});
+  }catch(e){
+   if(e.code!=='permission-denied')throw e;
+   // Um rascunho anterior pode já existir. Atualize apenas os campos permitidos.
+   await updateDoc(ref,{answers:record,status,updatedAt:serverTimestamp()});
+  }
+  savedIds.add(record.id);
  }
  watchStatus();
 }
-window.rtcCloudSave=(record,final)=>{clearTimeout(draftTimer);pendingSave=saveRecord(record,final).catch(err);return pendingSave;};
-window.rtcWatchCurrent=watchStatus;
+window.rtcCloudSave=(record,final)=>{
+ clearTimeout(draftTimer);
+ // Aguarde autenticação e grave em sequência para não disputar create/update.
+ const snapshot=structuredClone(record);
+ pendingSave=pendingSave.catch(()=>{}).then(()=>saveRecord(snapshot,final));
+ pendingSave.catch(err);
+ return pendingSave;
+};
+window.rtcWatchCurrent=()=>{if(savedIds.has(window.rtcGetCurrentId?.()))watchStatus();};
 window.rtcCloudDraft=(record)=>{
  clearTimeout(draftTimer);
  draftTimer=setTimeout(()=>{
@@ -48,7 +59,7 @@ window.rtcCloudDraft=(record)=>{
  },1400);
 };
 function watchStatus(){if(statusUnsub){statusUnsub();statusUnsub=null;}
- if(!user||fiscal||!window.rtcGetCurrentId?.())return;
+ if(!user||fiscal||!window.rtcGetCurrentId?.()||!savedIds.has(window.rtcGetCurrentId()))return;
  statusUnsub=onSnapshot(doc(db,'entrevistas',window.rtcGetCurrentId()),snap=>{
   if(!snap.exists())return;
   const s=snap.data().status;
@@ -71,4 +82,3 @@ onAuthStateChanged(auth,async u=>{
 const oldRender=window.render;
 if(typeof oldRender==='function')window.render=function(...args){const r=oldRender(...args);watchStatus();return r;};
 // Existing page initializes with its own local rascunho. Keep it and synchronize on edits.
-
