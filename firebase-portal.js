@@ -1,6 +1,6 @@
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {getAuth, onAuthStateChanged, signInAnonymously, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence, browserSessionPersistence} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
-import {getFirestore, doc, setDoc, getDoc, onSnapshot, serverTimestamp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import {getFirestore, doc, setDoc, updateDoc, onSnapshot, serverTimestamp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import {firebaseConfig, FISCAL_EMAIL} from './firebase-config.js';
 const app=initializeApp(firebaseConfig), auth=getAuth(app), db=getFirestore(app);
 let user=null, fiscal=false, draftTimer=null, statusUnsub=null, pendingSave=null;
@@ -24,16 +24,19 @@ window.rtcLogin=async()=>{
 };
 window.rtcLogout=async()=>{try{await signOut(auth);await signInAnonymously(auth);window.rtcClose();}catch(e){err(e);}};
 async function saveRecord(record,final){
- if(!user||fiscal||!record?.id)return;
- const ref=doc(db,'entrevistas',record.id), current=await getDoc(ref);
+ if(!user||fiscal||!record?.id)throw Error('A autenticação do produtor ainda não está pronta.');
+ const ref=doc(db,'entrevistas',record.id);
  const status=final?'Pendente Fiscal':'Rascunho';
- if(current.exists()){
-  const prev=current.data();
-  if(prev.ownerUid!==user.uid||prev.status==='Aprovado Fiscal'||(!final&&prev.status==='Pendente Fiscal'))return;
-  await setDoc(ref,{answers:record,status,updatedAt:serverTimestamp()}, {merge:true});
- }else{
-  await setDoc(ref,{ownerUid:user.uid,answers:record,status,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),fiscal:{} });
+ // Não consulte previamente documentos inexistentes: as regras restringem get ao proprietário.
+ try {
+  await setDoc(ref,{ownerUid:user.uid,answers:record,status,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),fiscal:{}});
+ } catch(e) {
+  if(e.code!=='permission-denied')throw e;
+  // Se o documento já existe e pertence ao usuário, atualize apenas os campos permitidos.
+  // As regras do Firestore recusam alterações de documentos de outros produtores.
+  await updateDoc(ref,{answers:record,status,updatedAt:serverTimestamp()});
  }
+ watchStatus();
 }
 window.rtcCloudSave=(record,final)=>{clearTimeout(draftTimer);pendingSave=saveRecord(record,final).catch(err);return pendingSave;};
 window.rtcWatchCurrent=watchStatus;
@@ -62,9 +65,10 @@ onAuthStateChanged(auth,async u=>{
  else if(u&&!u.isAnonymous){ // other accounts have no fiscal permissions
   await signOut(auth);return;
  }else if(!u){try{await signInAnonymously(auth);}catch(e){err(e);}return;}
- watchStatus();
+ // Acompanhar status somente após salvar; ouvir documento inexistente pode ser recusado.
 });
 // Re-register status listener when navigating to a different interview.
 const oldRender=window.render;
 if(typeof oldRender==='function')window.render=function(...args){const r=oldRender(...args);watchStatus();return r;};
 // Existing page initializes with its own local rascunho. Keep it and synchronize on edits.
+
