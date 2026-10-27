@@ -1,0 +1,20 @@
+TESTE ISOLADO DE INTEGRAÇÃO MARUBENI / FIREBASE
+
+Arquivos: index.html, painel-fiscal.html, firebase-config.js
+
+1. No repositório GitHub, faça backup dos arquivos atuais (baixe o ZIP do repositório).
+2. Preferencialmente crie uma BRANCH separada para este teste e configure o GitHub Pages para ela; ou use outro repositório de teste. Não é necessário apagar o portal principal.
+3. Publique os três arquivos na raiz da branch/repositório servido pelo GitHub Pages.
+4. Mantenha as regras atuais do Firestore. Não abra acesso público.
+5. Firebase Authentication: Anonymous e Email/Password precisam estar habilitados.
+6. Abra index.html, envie dados FICTÍCIOS e confirme o protocolo.
+7. Confira Firebase Console > Firestore Database > Dados > entrevistas.
+8. Abra painel-fiscal.html, entre com o usuário fiscal e avalie o cadastro.
+9. Confirme que o status mudou no Firestore.
+
+OBSERVAÇÕES:
+- O painel exige usuário contabil-fiscal@marubenigraos.com com e-mail verificado (emailVerified=true).
+- O teste usa a coleção real 'entrevistas' do projeto existente. Identifique e apague os registros fictícios de teste posteriormente no console, se autorizado.
+- Nunca preencha dados pessoais reais nesta versão de teste.
+- O ZIP NÃO altera as regras de segurança do Firebase.
+- Se houver falha, o site mostra o código exato da operação.
