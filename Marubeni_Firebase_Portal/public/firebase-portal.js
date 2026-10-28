@@ -1,6 +1,6 @@
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {getAuth, onAuthStateChanged, signInAnonymously, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence, browserSessionPersistence} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
-import {getFirestore, doc, setDoc, updateDoc, onSnapshot, serverTimestamp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import {getFirestore, doc, collection, addDoc, updateDoc, onSnapshot, serverTimestamp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import {firebaseConfig} from './firebase-config.js';
 const app=initializeApp(firebaseConfig), auth=getAuth(app), db=getFirestore(app);
 let user=null, fiscal=false, draftTimer=null, statusUnsub=null, pendingSave=null;
@@ -22,22 +22,30 @@ window.rtcLogin=async()=>{
  el('rtc-pass').value='';showPanel();}catch(e){el('rtc-error').textContent=e.message;}
 };
 window.rtcLogout=async()=>{try{await signOut(auth);await signInAnonymously(auth);window.rtcClose();}catch(e){err(e);}};
+// IDs do Firestore por rascunho e por usuario: nao reutilizar ID de outra sessao.
+const cloudKey=(id)=>'marubeni-cloud-id:'+user.uid+':'+id;
+let saveQueue=Promise.resolve();
 async function saveRecord(record,final){
  if(!user||fiscal||!record?.id)throw Error('A autenticação do produtor ainda não está pronta.');
- const ref=doc(db,'entrevistas',record.id);
  const status=final?'Pendente Fiscal':'Rascunho';
- // Não consulte previamente documentos inexistentes: as regras restringem get ao proprietário.
- try {
-  await setDoc(ref,{ownerUid:user.uid,answers:record,status,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),fiscal:{}});
- } catch(e) {
-  if(e.code!=='permission-denied')throw e;
-  // Se o documento já existe e pertence ao usuário, atualize apenas os campos permitidos.
-  // As regras do Firestore recusam alterações de documentos de outros produtores.
-  await updateDoc(ref,{answers:record,status,updatedAt:serverTimestamp()});
+ const key=cloudKey(record.id);
+ const savedId=localStorage.getItem(key);
+ if(!savedId){
+   // Primeira gravação: usa ID novo, como no formulario resumido validado.
+   const created=await addDoc(collection(db,'entrevistas'),{
+     ownerUid:user.uid,answers:record,status,
+     createdAt:serverTimestamp(),updatedAt:serverTimestamp(),fiscal:{}
+   });
+   localStorage.setItem(key,created.id);
+ }else{
+   // Proximas gravacoes: somente campos permitidos nas regras de update.
+   await updateDoc(doc(db,'entrevistas',savedId),{
+     answers:record,status,updatedAt:serverTimestamp()
+   });
  }
  watchStatus();
 }
-window.rtcCloudSave=(record,final)=>{clearTimeout(draftTimer);pendingSave=saveRecord(record,final).catch(err);return pendingSave;};
+window.rtcCloudSave=(record,final)=>{clearTimeout(draftTimer);pendingSave=saveQueue=saveQueue.catch(()=>{}).then(()=>saveRecord(structuredClone(record),final));pendingSave.catch(err);return pendingSave;};
 window.rtcWatchCurrent=watchStatus;
 window.rtcCloudDraft=(record)=>{
  clearTimeout(draftTimer);
@@ -48,12 +56,14 @@ window.rtcCloudDraft=(record)=>{
 };
 function watchStatus(){if(statusUnsub){statusUnsub();statusUnsub=null;}
  if(!user||fiscal||!window.rtcGetCurrentId?.())return;
- statusUnsub=onSnapshot(doc(db,'entrevistas',window.rtcGetCurrentId()),snap=>{
+ const cloudId=localStorage.getItem(cloudKey(window.rtcGetCurrentId()));
+ if(!cloudId)return;
+ statusUnsub=onSnapshot(doc(db,'entrevistas',cloudId),snap=>{
   if(!snap.exists())return;
   const s=snap.data().status;
   const mirror=JSON.parse(localStorage.getItem('marubeni-painel-fiscal-previa-v2')||'[]');
-  const items=Array.isArray(mirror)?mirror:[];const i=items.findIndex(x=>x.id===snap.id);
-  const entry={id:snap.id,status:s};if(i>=0)items[i]={...items[i],...entry};else items.push(entry);
+  const items=Array.isArray(mirror)?mirror:[];const i=items.findIndex(x=>x.id===window.rtcGetCurrentId());
+  const entry={id:window.rtcGetCurrentId(),status:s};if(i>=0)items[i]={...items[i],...entry};else items.push(entry);
   localStorage.setItem('marubeni-painel-fiscal-previa-v2',JSON.stringify(items));
   const badge=el('rtc-client-status');if(badge){badge.textContent=s==='Aprovado Fiscal'?'Aprovado pelo Fiscal':s==='Correção solicitada'?'Correção solicitada pelo Fiscal':'Aguardando análise da Marubeni';}
  },err);
