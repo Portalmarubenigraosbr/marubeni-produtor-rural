@@ -39,6 +39,18 @@ document.querySelectorAll('nav button[data-view]').forEach(b=>b.onclick=()=>{vie
 onAuthStateChanged(auth,u=>{
  if(unsub){unsub();unsub=null;}
  if(!fiscal(u)){el('state').textContent='Acesso restrito. Entre pelo login Fiscal na página principal e verifique o e-mail da conta.';el('listing').classList.add('hidden');el('stats').classList.add('hidden');return;}
- el('state').textContent='Conectado: '+u.email+' · sincronização em tempo real';
- unsub=onSnapshot(collection(db,'entrevistas'),snap=>{records=snap.docs.map(d=>({id:d.id,...d.data()}));refresh();if(selected){const r=records.find(x=>x.id===selected.id);if(r)selected=r;}},e=>{el('state').textContent='Erro de leitura: '+e.message;});
+ el('state').textContent='Conectado: '+u.email+' · carregando cadastros...';
+ // A sessao anonima pode ter ocultado a lista antes do login Fiscal.
+ el('listing').classList.remove('hidden');
+ el('stats').classList.remove('hidden');
+ el('detail').classList.add('hidden');
+ selected=null;
+ unsub=onSnapshot(collection(db,'entrevistas'),snap=>{
+   records=snap.docs.map(d=>({id:d.id,...d.data()}));
+   el('state').textContent='Conectado: '+u.email+' · '+records.length+' cadastro(s) recebido(s) do Firebase';
+   refresh();
+ },e=>{
+   el('state').textContent='Erro de leitura do Firestore: '+e.message;
+   console.error('Falha ao consultar entrevistas:',e);
+ });
 });
