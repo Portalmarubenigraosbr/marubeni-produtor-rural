@@ -1,110 +1,48 @@
-
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function signed() {
-      return request.auth != null;
-    }
-
-    // Acesso Fiscal para usuários cadastrados no Firebase
-    // com e-mail/senha e e-mail verificado.
+    function signed() { return request.auth != null; }
     function fiscal() {
       return signed()
+        && request.auth.token.get('email', '') is string
         && request.auth.token.get('email', '') != ''
         && request.auth.token.get('email_verified', false) == true
         && request.auth.token.get('firebase', {}).get('sign_in_provider', '') == 'password';
     }
-
-    function own() {
-      return signed()
-        && resource.data.ownerUid == request.auth.uid;
-    }
-
+    function own() { return signed() && resource.data.ownerUid == request.auth.uid; }
     function fieldsOk() {
       return request.resource.data.keys().hasOnly([
-          'ownerUid',
-          'answers',
-          'status',
-          'createdAt',
-          'updatedAt',
-          'fiscal'
-        ])
+        'ownerUid','answers','status','createdAt','updatedAt','fiscal'
+      ])
         && request.resource.data.answers is map
         && request.resource.data.answers.keys().size() <= 150
         && request.resource.data.ownerUid is string;
     }
-
     match /entrevistas/{id} {
-
-      // Visualização de cadastros
       allow get: if fiscal() || own();
-
-      // Listagem exclusiva para usuários fiscais
       allow list: if fiscal();
-
-      // Criação de cadastros pelo formulário público
-      allow create: if signed()
-        && !fiscal()
-        && fieldsOk()
+      allow create: if signed() && !fiscal() && fieldsOk()
         && request.resource.data.ownerUid == request.auth.uid
-        && request.resource.data.status in [
-          'Rascunho',
-          'Pendente Fiscal'
-        ]
+        && request.resource.data.status in ['Rascunho','Pendente Fiscal']
         && request.resource.data.fiscal == {};
-
-      // Atualização e aprovação dos cadastros
       allow update: if (
-
-        // Equipe Fiscal
-        fiscal()
-        && fieldsOk()
+        fiscal() && fieldsOk()
         && request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.answers == resource.data.answers
         && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.diff(resource.data)
-          .affectedKeys().hasOnly([
-            'status',
-            'fiscal',
-            'updatedAt'
-          ])
-        && request.resource.data.status in [
-          'Aprovado Fiscal',
-          'Correção solicitada',
-          'Pendente Fiscal'
-        ]
-        && request.resource.data.fiscal.reviewer
-          == request.auth.token.get('email', '')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','fiscal','updatedAt'])
+        && request.resource.data.status in ['Aprovado Fiscal','Correção solicitada','Pendente Fiscal']
+        && request.resource.data.fiscal.reviewer == request.auth.token.get('email', '')
         && request.resource.data.fiscal.memo is string
-
       ) || (
-
-        // Produtor rural
-        own()
-        && fieldsOk()
-        && resource.data.status in [
-          'Rascunho',
-          'Pendente Fiscal',
-          'Correção solicitada'
-        ]
-        && request.resource.data.status in [
-          'Rascunho',
-          'Pendente Fiscal'
-        ]
+        own() && fieldsOk()
+        && resource.data.status in ['Rascunho','Pendente Fiscal','Correção solicitada']
+        && request.resource.data.status in ['Rascunho','Pendente Fiscal']
         && request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.fiscal == resource.data.fiscal
         && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.diff(resource.data)
-          .affectedKeys().hasOnly([
-            'answers',
-            'status',
-            'updatedAt'
-          ])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers','status','updatedAt'])
       );
-
-      // Impede exclusão de cadastros
       allow delete: if false;
     }
   }
