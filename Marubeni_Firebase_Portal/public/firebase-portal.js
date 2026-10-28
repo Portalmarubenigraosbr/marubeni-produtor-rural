@@ -8,7 +8,15 @@ window.rtcAuthenticated=false;
 const isFiscal=u=>!!u&&!u.isAnonymous&&!!u.email&&u.emailVerified;
 const el=id=>document.getElementById(id);
 function err(e){console.error(e); alert('Falha na comunicação com Firebase: '+(e?.message||e));}
-function showPanel(){if(!fiscal){window.rtcOpen();return;} el('rtc-access').style.display='block';el('rtc-login').style.display='none';el('rtc-panel-wrap').style.display='block';}
+function showPanel(){
+ if(!fiscal){window.rtcOpen();return;}
+ el('rtc-access').style.display='block';
+ el('rtc-login').style.display='none';
+ el('rtc-panel-wrap').style.display='block';
+ // Carregar o iframe APOS o login para que reconheca a sessao Fiscal.
+ const frame=el('rtc-panel');
+ if(frame)frame.src='./painel-fiscal.html?auth='+Date.now();
+}
 window.rtcOpen=()=>{el('rtc-access').style.display='block';if(fiscal)showPanel();else{el('rtc-login').style.display='block';el('rtc-panel-wrap').style.display='none';}};
 window.rtcClose=()=>{el('rtc-access').style.display='none';};
 window.rtcShowPanel=showPanel;
@@ -16,7 +24,8 @@ window.rtcSavedRecords=()=>{if(fiscal)showPanel();else window.rtcOpen();};
 window.rtcLogin=async()=>{
  const email=el('rtc-email').value.trim().toLowerCase(),pass=el('rtc-pass').value;
  el('rtc-error').textContent='';
- try{await setPersistence(auth,el('rtc-remember').checked?browserLocalPersistence:browserSessionPersistence);
+ try{// O iframe precisa compartilhar a sessao com a pagina principal.
+ await setPersistence(auth,browserLocalPersistence);
  const result=await signInWithEmailAndPassword(auth,email,pass);
  if(!result.user.emailVerified){await signOut(auth);throw Error('Verifique o e-mail no Firebase Authentication antes de acessar.');}
  el('rtc-pass').value='';showPanel();}catch(e){el('rtc-error').textContent=e.message;}
