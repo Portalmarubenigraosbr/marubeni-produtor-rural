@@ -7,4 +7,4 @@ export const firebaseConfig = {
   appId: "1:218774857783:web:5b76f7e8a8b0feabd337b2",
   measurementId: "G-PBR4VE9M5K"
 };
-export const FISCAL_EMAIL = 'contabil-fiscal@marubenigraos.com';
+export const FISCAL_EMAIL = "email.autorizado@empresa.com";
