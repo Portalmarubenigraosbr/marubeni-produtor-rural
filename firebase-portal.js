@@ -91,7 +91,6 @@ window.rtcLogin=async()=>{
 
   el('rtc-pass').value='';
 
-  // Atualiza o estado antes de abrir o painel.
   user=result.user;
   fiscal=true;
   window.rtcAuthenticated=true;
@@ -141,10 +140,10 @@ async function saveRecord(record,final){
  if(user.uid.startsWith('producer_') && user.uid!=='producer_'+record.id){
   throw Error('Esta verificação não autoriza modificar outro cadastro.');
  }
+
  const ref=doc(db,'entrevistas',record.id);
  const status=final?'Pendente Fiscal':'Rascunho';
 
- // Mantém a lógica original de gravação dos produtores.
  try{
   await setDoc(ref,{
    ownerUid:user.uid,
@@ -154,18 +153,11 @@ async function saveRecord(record,final){
    updatedAt:serverTimestamp(),
    fiscal:{}
   });
-
  }catch(e){
-  if(e.code!=='permission-denied'){
-   throw e;
+  if(e?.code==='permission-denied'){
+   throw Error('O Firestore recusou a gravação. Confirme se a sessão anônima está habilitada e se as regras permitem criar este cadastro; não altere as regras compartilhadas sem revisão.');
   }
-
-  // Atualiza somente documentos permitidos pelas regras.
-  await updateDoc(ref,{
-   answers:record,
-   status,
-   updatedAt:serverTimestamp()
-  });
+  throw e;
  }
 
  watchStatus();
@@ -183,7 +175,6 @@ window.rtcCloudDraft=(record)=>{
  clearTimeout(draftTimer);
 
  draftTimer=setTimeout(()=>{
-  // Rascunhos só são sincronizados quando a sessão autoriza este documento.
   if(user&&!fiscal&&record?.id&&(!user.uid.startsWith('producer_')||user.uid==='producer_'+record.id)){
    window.rtcCloudSave(
     {...record,status:'Rascunho'},
@@ -268,7 +259,6 @@ onAuthStateChanged(auth,async u=>{
   }
 
  }else if(u&&!u.isAnonymous&&!u.uid.startsWith('producer_')){
-  // Usuários com e-mail não verificado não recebem acesso Fiscal.
   await signOut(auth);
   return;
 
@@ -280,7 +270,4 @@ onAuthStateChanged(auth,async u=>{
   }
   return;
  }
-
- // Acompanhar status somente após salvar.
- // Ouvir documento inexistente pode ser recusado.
 });
