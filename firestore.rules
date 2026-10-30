@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signed() { return request.auth != null; }
+    function fiscal() {
+      return signed()
+        && request.auth.token.get('email', '') is string
+        && request.auth.token.get('email', '') != ''
+        && request.auth.token.get('email_verified', false) == true
+        && request.auth.token.get('firebase', {}).get('sign_in_provider', '') == 'password';
+    }
+    function verifiedProducer(id) {
+      return signed()
+        && request.auth.token.get('producerRecordId', '') == id
+        && request.auth.token.get('producerUntil', 0) > request.time.toMillis();
+    }
+    function own() { return signed() && resource.data.ownerUid == request.auth.uid; }
+    function fieldsOk() {
+      return request.resource.data.keys().hasOnly([
+        'ownerUid','answers','status','createdAt','updatedAt','fiscal'
+      ])
+        && request.resource.data.answers is map
+        && request.resource.data.answers.keys().size() <= 150
+        && request.resource.data.ownerUid is string;
+    }
+    match /entrevistas/{id} {
+      allow get: if fiscal() || own() || verifiedProducer(id);
+      allow list: if fiscal();
+      allow create: if signed() && !fiscal() && request.auth.token.get('producerRecordId', '') == '' && fieldsOk()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.status in ['Rascunho','Pendente Fiscal']
+        && request.resource.data.fiscal == {};
+      allow update: if (
+        fiscal() && fieldsOk()
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.answers == resource.data.answers
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','fiscal','updatedAt'])
+        && request.resource.data.status in ['Aprovado Fiscal','Correção solicitada','Pendente Fiscal']
+        && request.resource.data.fiscal.reviewer == request.auth.token.get('email', '')
+        && request.resource.data.fiscal.memo is string
+      ) || (
+        (own() || verifiedProducer(id)) && fieldsOk()
+        && resource.data.status in ['Rascunho','Pendente Fiscal','Correção solicitada']
+        && request.resource.data.status in ['Rascunho','Pendente Fiscal']
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.fiscal == resource.data.fiscal
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers','status','updatedAt'])
+      );
+      allow delete: if false;
+    }
+  }
+}

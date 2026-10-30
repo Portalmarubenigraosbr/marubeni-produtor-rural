@@ -1,0 +1,61 @@
+PORTAL MARUBENI — HOMOLOGAÇÃO: CPF/CNPJ + CÓDIGO POR E-MAIL
+==========================================================
+Arquivos preparados com base no ZIP enviado em 30/10/2026.
+Preservados: página inicial, 10 etapas, painel Fiscal e sua lógica de aprovação.
+
+O QUE MUDOU
+- index.html: campo de e-mail do produtor passa a obrigatório; acompanhamento
+  solicita CPF/CNPJ, recebe código, valida e mostra status/parecer.
+- firebase-portal.js: aceita sessão verificada do produtor sem conceder acesso Fiscal.
+- painel-fiscal.html e painel-fiscal.js: mantidos sem alteração.
+- firestore.rules: permite ao produtor autenticado por código acessar SOMENTE
+  o seu documento por 30 minutos; acesso Fiscal permanece.
+- functions/: gera código de 6 dígitos (10 minutos, até 5 tentativas), valida e
+  emite token temporário; avisa por e-mail SOMENTE quando o Fiscal solicita correção.
+- O formulário anterior é restaurado no navegador após autenticação, permitindo
+  corrigir e reenviar. O status retorna a Pendente Fiscal.
+
+IMPORTANTE: ESTE PACOTE NÃO ESTÁ ATIVO ATÉ A CONFIGURAÇÃO DOS SERVIÇOS.
+Não coloque credenciais SMTP no HTML. O envio usa a coleção Firestore 'mail'
+e exige configurar a extensão oficial Firebase 'Trigger Email' (SMTP de envio).
+O e-mail digitado pelo produtor é o DESTINATÁRIO, não o remetente.
+
+INSTALAÇÃO SEM INSTALAR NODE.JS NO SEU COMPUTADOR
+1. Faça backup da branch homologacao-painel-fiscal.
+2. No console Firebase, instale a extensão 'Trigger Email from Firestore',
+   configurando coleção 'mail' e credenciais SMTP de um remetente autorizado.
+   Não compartilhe credenciais no chat ou GitHub.
+3. Para publicar as Cloud Functions, use o Google Cloud Shell no navegador,
+   com o projeto Firebase selecionado. Carregue a pasta do pacote e execute:
+       npm install -g firebase-tools
+       firebase login --no-localhost
+       firebase use --add
+       cd functions && npm install && cd ..
+       firebase deploy --only functions
+   O projeto pode exigir o plano Blaze/faturamento para funções e extensão.
+4. Publicar as regras: firebase deploy --only firestore:rules
+   (ou colar o arquivo firestore.rules no console Firebase > Firestore > Rules).
+5. Substitua somente os 5 arquivos da raiz da branch de HOMOLOGAÇÃO:
+   index.html, firebase-config.js, firebase-portal.js,
+   painel-fiscal.html, painel-fiscal.js.
+   Não publique em main.
+6. Teste com um cadastro fictício novo e e-mail controlado.
+7. Na Área Fiscal, marque 'Correção solicitada' e confira o e-mail.
+8. Acesse Acompanhamento de outro navegador, valide o código,
+   visualize o parecer, corrija e reenvie.
+9. Verifique se o Fiscal volta a mostrar 'Pendente Fiscal'.
+
+SEGURANÇA / LIMITAÇÕES
+- As funções usam Admin SDK; não exponha sua chave ou token em frontend.
+- CPF/CNPJ é normalizado; a busca contempla apenas dígitos e máscara padrão.
+  Cadastros antigos com formatos diferentes podem exigir migração.
+- Para produção, adicione Firebase App Check/anti-bot, monitoramento,
+  proteção contra abuso de e-mail, controle de duplicidade CPF/CNPJ e
+  política de retenção/privacidade. Há limitação de pedidos por IP/CPF.
+- A extensão de e-mail pode exigir SMTP pago ou infraestrutura corporativa.
+- A consulta retorna dados somente após validação; a solicitação de código
+  não informa se o CPF/CNPJ existe.
+- A autenticação por código é válida por 30 minutos para leitura/edição.
+- Recomendado habilitar TTL nas coleções _otp_requests (expiresAt)
+  e _otp_limits (expiresAt) no console Firestore.
+- Os arquivos do ZIP NÃO foram implantados no Firebase nem testados em produção.

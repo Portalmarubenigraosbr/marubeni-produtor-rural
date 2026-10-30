@@ -279,17 +279,13 @@ body.landing-mode #rtc-tracking,body.form-mode #rtc-tracking{display:none!import
 <div id="draft-cadastro-banner"></div>
 <div id="draft-steps-bar" class="draft-steps-bar" aria-label="Navegação entre etapas"></div>
 <section id="rtc-tracking" aria-label="Acompanhamento do cadastro" hidden>
- <div class="rtc-track-header"><div><div class="eyebrow">MARUBENI GRÃOS BRASIL</div><h1>Acompanhamento do cadastro</h1><p>Consulte o andamento da análise do seu cadastro pelo setor Fiscal.</p></div><button type="button" onclick="showDraftHome()">← Voltar ao início</button></div>
- <div class="rtc-track-panel">
-  <p id="rtc-track-loading" role="status">Consultando o cadastro com segurança...</p>
-  <div id="rtc-track-result" hidden>
-   <div class="eyebrow">STATUS ATUAL</div><div class="rtc-track-status"><span id="rtc-track-status" class="rtc-track-pill"></span></div>
-   <p id="rtc-track-message"></p><p id="rtc-track-protocol" class="hint"></p>
-   <div id="rtc-track-memo-wrap" class="rtc-track-memo" hidden><strong>Parecer do setor Fiscal</strong><p id="rtc-track-memo" style="margin-bottom:0"></p></div>
-   <div class="rtc-track-actions"><button id="rtc-track-edit" class="primary" type="button" onclick="rtcEditCorrection()" hidden>Corrigir cadastro</button><button type="button" onclick="rtcRefreshTracking()">Atualizar status</button></div>
-  </div>
- </div>
-</section><main id="app"></main><div id="notice" role="status"></div></div><script>'use strict';
+<div class="rtc-track-header"><div><div class="eyebrow">MARUBENI GRÃOS BRASIL</div><h1>Acompanhamento do cadastro</h1><p>Consulte o andamento da análise do seu cadastro pelo setor Fiscal.</p></div><button type="button" onclick="showDraftHome()">← Voltar ao início</button></div>
+<div class="rtc-track-panel">
+<form id="rtc-track-request"><label for="rtc-track-taxid">CPF ou CNPJ</label><input id="rtc-track-taxid" required inputmode="numeric" placeholder="CPF ou CNPJ do cadastro"><div class="rtc-track-actions"><button class="primary" id="rtc-track-send" type="submit">Enviar código para meu e-mail</button></div></form>
+<form id="rtc-track-verify" hidden><p>Se houver um cadastro, enviaremos um código ao e-mail registrado. Confira também o spam.</p><label for="rtc-track-code">Código recebido por e-mail</label><input id="rtc-track-code" required inputmode="numeric" maxlength="6" pattern="[0-9]{6}" autocomplete="one-time-code" placeholder="000000"><div class="rtc-track-actions"><button class="primary" type="submit">Validar código</button></div></form>
+<p id="rtc-track-loading" role="status" hidden></p>
+<div id="rtc-track-result" hidden><div class="eyebrow">STATUS ATUAL</div><div class="rtc-track-status"><span id="rtc-track-status" class="rtc-track-pill"></span></div><p id="rtc-track-message"></p><div id="rtc-track-memo-wrap" class="rtc-track-memo" hidden><strong>Parecer do setor Fiscal</strong><p id="rtc-track-memo"></p></div><div class="rtc-track-actions"><button id="rtc-track-edit" class="primary" type="button" onclick="rtcEditCorrection()" hidden>Corrigir cadastro</button><button id="rtc-track-update" type="button">Atualizar status</button></div></div>
+</div></section><main id="app"></main><div id="notice" role="status"></div></div><script>'use strict';
 const VERSION='2026.09.28-v1',KEY='marubeni-draft-visual-modelo3-v1',YES=['Sim','Não','Em análise'];
 const makeId=()=>globalThis.crypto?.randomUUID?.()||'rtc-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
 const today=()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'});
@@ -304,7 +300,7 @@ const integrated=d=>d.integration==='Sim'&&d.integrationOperation==='Sim';
 const F=(id,label,type='text',options=null,when=null,hint='',required=true)=>({id,label,type,options,when,hint,required});
 const Y=(id,label,when=null,hint='')=>F(id,label,'radio',YES,when,hint);
 const sections=[
-{id:'ident',title:'Quem está vendendo?',sub:'Informe os dados do produtor que constará como fornecedor no documento fiscal.',fields:[F('operationDate','Data prevista da venda à Marubeni','date',null,null,'O perfil será analisado para esta data, não apenas para o dia da entrevista.'),F('name','Nome completo / razão social'),F('type','Tipo de fornecedor','radio',['Pessoa física','Pessoa jurídica','Cooperativa','Associação','Outro']),F('taxId','CPF / CNPJ', 'text',null,null,'Informe apenas dígitos ou o número formatado.'),F('ie','Inscrição estadual / inscrição de produtor'),F('contact','Nome do produtor / representante responsável pelas informações'),F('phone','Telefone / WhatsApp'),F('email','E-mail','email',null,null,'',false),F('accountant','Contador / escritório e CRC (opcional)','text',null,null,'',false),F('accountantConfirmed','O contador validou o enquadramento informado? (opcional)','radio',YES,null,'',false),F('accountantContact','Contato do contador (opcional)','text',null,null,'',false),F('registry','CAEPF / identificação IBS-CBS e situação cadastral','text',null,null,'Conforme aplicável. CNPJ cadastral de pessoa física não a transforma em pessoa jurídica.',false)]},
+{id:'ident',title:'Quem está vendendo?',sub:'Informe os dados do produtor que constará como fornecedor no documento fiscal.',fields:[F('operationDate','Data prevista da venda à Marubeni','date',null,null,'O perfil será analisado para esta data, não apenas para o dia da entrevista.'),F('name','Nome completo / razão social'),F('type','Tipo de fornecedor','radio',['Pessoa física','Pessoa jurídica','Cooperativa','Associação','Outro']),F('taxId','CPF / CNPJ', 'text',null,null,'Informe apenas dígitos ou o número formatado.'),F('ie','Inscrição estadual / inscrição de produtor'),F('contact','Nome do produtor / representante responsável pelas informações'),F('phone','Telefone / WhatsApp'),F('email','E-mail do produtor (obrigatório para acompanhamento e correções)','email'),F('accountant','Contador / escritório e CRC (opcional)','text',null,null,'',false),F('accountantConfirmed','O contador validou o enquadramento informado? (opcional)','radio',YES,null,'',false),F('accountantContact','Contato do contador (opcional)','text',null,null,'',false),F('registry','CAEPF / identificação IBS-CBS e situação cadastral','text',null,null,'Conforme aplicável. CNPJ cadastral de pessoa física não a transforma em pessoa jurídica.',false)]},
 {id:'origin',title:'De onde vem a produção?',sub:'Separe produção própria, integração e mercadorias de terceiros.',fields:[F('properties','Propriedades e estabelecimentos','textarea',null,null,'Uma linha por área: nome, município/UF, IE, relação com a área e emitente da nota.'),F('area','Relação principal com a área','select',['Própria','Arrendada','Parceria rural','Cedida','Integração','Múltiplas — detalhar acima']),Y('own','Esta operação envolve somente produção própria?'),Y('third','Também comercializa grãos de terceiros?'),F('thirdDetails','Origem de terceiros e segregação dos lotes','textarea',null,d=>d.third!=='Não'||d.own!=='Sim'),Y('ruralOnly','As atividades são exclusivamente rurais?'),F('otherActivities','Outras atividades e respectivas receitas','textarea',null,d=>d.ruralOnly!=='Sim'),Y('integration','Existe contrato de integração vertical?'),Y('integrationOperation','Esta operação decorre do contrato de integração?',d=>d.integration==='Sim'),F('integrationDetails','Integrador, CNPJ, contrato, vigência e remuneração','textarea',null,d=>d.integration==='Sim','Na integração, separar a remuneração contratual do valor total dos produtos.')]},
 {id:'regime',title:'Qual é o regime declarado?',sub:'Não ter feito opção não significa, por si só, ser não contribuinte.',fields:[Y('simple','A pessoa jurídica é optante pelo Simples Nacional?',d=>d.type==='Pessoa jurídica'),Y('hybrid','Apura IBS/CBS fora do DAS, pelo regime regular?',d=>simple(d)),F('hybridStart','Início dos efeitos da opção pelo regime regular','date',null,d=>simple(d)&&d.hybrid==='Sim'),F('hybridEnd','Fim do período comprovado da opção','date',null,d=>simple(d)&&d.hybrid==='Sim'),Y('option','Houve opção voluntária pelo regime regular?',d=>!simple(d)),F('optionRequest','Data do pedido de opção','date',null,d=>!simple(d)&&d.option==='Sim'),F('optionStart','Início dos efeitos da opção comprovado','date',null,d=>!simple(d)&&d.option==='Sim'),Y('renunciation','Houve renúncia de opção anterior?',d=>!simple(d)),F('renunciationDate','Data da renúncia','date',null,d=>!simple(d)&&d.renunciation==='Sim'),F('renunciationEffect','Início dos efeitos da renúncia informado pelo contador','date',null,d=>!simple(d)&&d.renunciation==='Sim'),F('optionEvidence','Referência dos comprovantes de opção / renúncia','textarea',null,d=>(simple(d)&&d.hybrid==='Sim')||(!simple(d)&&(d.option==='Sim'||d.renunciation==='Sim')))]},
 {id:'structure',title:'Há vínculos que mudam o enquadramento?',sub:'Participações agropecuárias e entidades coletivas exigem controles próprios.',when:d=>!simple(d),fields:[Y('participation','Possui participação em outra PJ agropecuária?'),F('participations','CNPJ, nome, participação e receitas por ano de cada PJ','textarea',null,d=>d.participation==='Sim','A análise considera a soma das receitas, não apenas a parcela proporcional da participação.'),Y('coopMembers','Todos os integrantes são produtores PF abaixo do limite aplicável?',d=>coop(d)),F('coopDetails','Quantidade, relação dos integrantes e evidência de receitas','textarea',null,d=>coop(d))]},
@@ -498,6 +494,14 @@ function showDraftStatus(){
  document.getElementById('rtc-tracking').hidden=false;
  window.rtcRefreshTracking?.();window.scrollTo({top:0,behavior:'smooth'});
 }
+window.rtcRestoreProducerRecord=(record)=>{
+ if(!record?.id)return;
+ data=structuredClone(record);
+ db.draft=data;
+ const at=db.records.findIndex(r=>r.id===data.id);
+ if(at>=0)db.records[at]=structuredClone(data);else db.records.push(structuredClone(data));
+ persist();
+};
 window.rtcEditCorrection=()=>{
  if(window.rtcCorrectionId && data?.id===window.rtcCorrectionId){index=0;showDraftForm();}
  else alert('Este cadastro não está disponível para edição neste navegador. Para proteger seus dados, não é possível recuperar as respostas apenas pelo número do protocolo.');
@@ -509,51 +513,51 @@ function showDraftInfo(topic){
 document.body.classList.add('landing-mode');
 </script>
 <script type="module" id="rtc-tracking-firebase">
-import {getApp,getApps,initializeApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import {getAuth,onAuthStateChanged} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
-import {getFirestore,doc,onSnapshot} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import {initializeApp,getApps,getApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import {getFunctions,httpsCallable} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js';
+import {getAuth,signInWithCustomToken} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+import {getFirestore,doc,getDoc} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import {firebaseConfig} from './firebase-config.js';
 const app=getApps().length?getApp():initializeApp(firebaseConfig);
-const auth=getAuth(app),firestore=getFirestore(app);
-let authUser=null,unsubscribe=null;
+const auth=getAuth(app),db=getFirestore(app),fn=getFunctions(app,'southamerica-east1');
 const $=id=>document.getElementById(id);
-const messages={
- 'Rascunho':'Seu cadastro ainda está em elaboração. Finalize o formulário para enviá-lo ao setor Fiscal.',
- 'Pendente Fiscal':'Recebemos seu cadastro. Ele está aguardando análise do setor Fiscal da Marubeni.',
- 'Correção solicitada':'O setor Fiscal solicitou ajustes. Consulte o parecer abaixo e corrija o formulário.',
- 'Aprovado Fiscal':'Seu cadastro foi aprovado pelo setor Fiscal da Marubeni.'
-};
-function clearWatch(){if(unsubscribe){unsubscribe();unsubscribe=null;}}
-function showMessage(message){$('rtc-track-loading').textContent=message;$('rtc-track-loading').hidden=false;$('rtc-track-result').hidden=true;}
-window.rtcRefreshTracking=()=>{
- clearWatch();window.rtcCorrectionId=null;
- if(!authUser){showMessage('Aguardando autenticação para consultar seu cadastro...');return;}
- if(!authUser.isAnonymous){showMessage('Para consultar o cadastro do produtor, saia da Área Fiscal e retorne ao portal.');return;}
- const records=Array.isArray(db?.records)?db.records:[];
- const ids=[...new Set([data?.id,...records.map(r=>r.id)].filter(Boolean))];
- // A regra do Firestore permite ler apenas documentos pertencentes à identidade atual.
- // Não consultamos todos os produtores nem usamos dados locais como confirmação de status.
- if(!ids.length){showMessage('Nenhum cadastro encontrado neste navegador.');return;}
- let i=0;const tryNext=()=>{
-  if(i>=ids.length){showMessage('Não foi possível localizar um cadastro vinculado a esta sessão. Se você mudou de navegador ou apagou os dados, será necessário um método de recuperação seguro.');return;}
-  const id=ids[i++];clearWatch();
-  unsubscribe=onSnapshot(doc(firestore,'entrevistas',id),snap=>{
-   if(!snap.exists()){clearWatch();tryNext();return;}
-   const record=snap.data();if(record.ownerUid!==authUser?.uid){clearWatch();tryNext();return;}
-   const status=record.status||'Rascunho';
-   $('rtc-track-loading').hidden=true;$('rtc-track-result').hidden=false;
-   $('rtc-track-status').textContent=status;$('rtc-track-status').dataset.state=status;
-   $('rtc-track-message').textContent=messages[status]||'Seu cadastro está em análise.';
-   $('rtc-track-protocol').textContent='Identificador do cadastro: '+id;
-   const memo=record.fiscal?.memo||'';
-   $('rtc-track-memo-wrap').hidden=!(status==='Correção solicitada'&&memo);
-   $('rtc-track-memo').textContent=memo;
-   const canEdit=status==='Correção solicitada'&&data?.id===id;
-   $('rtc-track-edit').hidden=!canEdit;
-   window.rtcCorrectionId=canEdit?id:null;
-  },e=>{console.warn('Consulta do acompanhamento:',e);clearWatch();if(e.code==='permission-denied'){tryNext();}else showMessage('Não foi possível consultar o status. Verifique sua conexão e tente novamente.');});
- };tryNext();
-};
-onAuthStateChanged(auth,u=>{authUser=u;if(document.body.classList.contains('tracking-mode'))window.rtcRefreshTracking();});
+let requestId='',recordId='';
+const messages={'Rascunho':'Cadastro ainda em elaboração.','Pendente Fiscal':'Seu cadastro aguarda análise Fiscal.','Correção solicitada':'O setor Fiscal solicitou ajustes. Consulte o parecer abaixo.','Aprovado Fiscal':'Cadastro aprovado pelo setor Fiscal.'};
+function message(s){$('rtc-track-loading').hidden=false;$('rtc-track-loading').textContent=s;}
+async function showRecord(){
+ const snap=await getDoc(doc(db,'entrevistas',recordId));
+ if(!snap.exists())throw Error('Cadastro não encontrado.');
+ const r=snap.data(),status=r.status;
+ $('rtc-track-result').hidden=false;$('rtc-track-loading').hidden=true;
+ $('rtc-track-status').textContent=status;$('rtc-track-message').textContent=messages[status]||'Cadastro em análise.';
+ $('rtc-track-memo-wrap').hidden=status!=='Correção solicitada';
+ $('rtc-track-memo').textContent=status==='Correção solicitada'?(r.fiscal?.memo||'Consulte o setor Fiscal.'):'';
+ const canEdit=status==='Correção solicitada';
+ $('rtc-track-edit').hidden=!canEdit;
+ window.rtcCorrectionId=canEdit?recordId:null;
+ if(canEdit)window.rtcRestoreProducerRecord?.(r.answers);
+}
+window.rtcRefreshTracking=()=>{if(recordId)showRecord().catch(e=>message(e.message));else {$('rtc-track-request').hidden=false;$('rtc-track-verify').hidden=true;$('rtc-track-result').hidden=true;$('rtc-track-loading').hidden=true;}};
+$('rtc-track-request').addEventListener('submit',async e=>{
+ e.preventDefault();const btn=$('rtc-track-send');btn.disabled=true;message('Solicitando código...');
+ try{
+  const result=await httpsCallable(fn,'solicitarCodigoProdutor')({taxId:$('rtc-track-taxid').value});
+  requestId=result.data.requestId;
+  $('rtc-track-request').hidden=true;$('rtc-track-verify').hidden=false;
+  message('Se houver cadastro, o código será enviado ao e-mail registrado.');
+ }catch(err){message(err.message||'Não foi possível solicitar o código.');}
+ finally{btn.disabled=false;}
+});
+$('rtc-track-verify').addEventListener('submit',async e=>{
+ e.preventDefault();message('Validando código...');
+ try{
+  const result=await httpsCallable(fn,'validarCodigoProdutor')({requestId,code:$('rtc-track-code').value.trim()});
+  await signInWithCustomToken(auth,result.data.token);
+  recordId=result.data.recordId;
+  $('rtc-track-verify').hidden=true;
+  await showRecord();
+ }catch(err){message(err.message||'Código inválido ou expirado.');}
+});
+$('rtc-track-update').addEventListener('click',()=>showRecord().catch(e=>message(e.message)));
 </script>
 <script type="module" src="./firebase-portal.js"></script></body></html>

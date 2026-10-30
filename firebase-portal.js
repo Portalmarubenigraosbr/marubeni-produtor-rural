@@ -12,7 +12,7 @@ window.rtcAuthenticated=false;
 
 // Qualquer usuário cadastrado no Firebase Authentication,
 // não anônimo e com e-mail verificado, pode acessar o Fiscal.
-const isFiscal=u=>!!u&&!u.isAnonymous&&!!u.email&&u.emailVerified;
+const isFiscal=u=>!!u&&!u.isAnonymous&&!!u.email&&u.emailVerified&&u.providerData?.some(p=>p.providerId==='password');
 
 const el=id=>document.getElementById(id);
 
@@ -263,7 +263,7 @@ onAuthStateChanged(auth,async u=>{
    showPanel();
   }
 
- }else if(u&&!u.isAnonymous){
+ }else if(u&&!u.isAnonymous&&!u.uid.startsWith('producer_')){
   // Usuários com e-mail não verificado não recebem acesso Fiscal.
   await signOut(auth);
   return;
