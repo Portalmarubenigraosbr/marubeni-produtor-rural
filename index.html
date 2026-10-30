@@ -518,8 +518,9 @@ import {initializeApp,getApps,getApp} from 'https://www.gstatic.com/firebasejs/1
 import {getAuth,signInWithCustomToken} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {getFirestore,doc,getDoc} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import {firebaseConfig} from './firebase-config.js';
-const app=getApps().length?getApp():initializeApp(firebaseConfig);
-const auth=getAuth(app),db=getFirestore(app);
+// Acompanhamento usa uma instância isolada: não substitui a sessão anônima do formulário.
+const trackingApp=getApps().find(a=>a.name==='marubeni-tracking')||initializeApp(firebaseConfig,'marubeni-tracking');
+const auth=getAuth(trackingApp),db=getFirestore(trackingApp);
 const WORKER='https://marubeni-verificacao-produtor.thales2698.workers.dev';
 async function callWorker(path,data){const r=await fetch(WORKER+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const result=await r.json();if(!r.ok)throw Error(result.error||'Erro na verificação');return result;}
 const $=id=>document.getElementById(id);
