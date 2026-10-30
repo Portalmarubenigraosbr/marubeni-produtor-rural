@@ -137,6 +137,10 @@ async function saveRecord(record,final){
   throw Error('A autenticação do produtor ainda não está pronta.');
  }
 
+ // Credencial temporária do produtor só pode alterar o cadastro validado.
+ if(user.uid.startsWith('producer_') && user.uid!=='producer_'+record.id){
+  throw Error('Esta verificação não autoriza modificar outro cadastro.');
+ }
  const ref=doc(db,'entrevistas',record.id);
  const status=final?'Pendente Fiscal':'Rascunho';
 
@@ -179,8 +183,8 @@ window.rtcCloudDraft=(record)=>{
  clearTimeout(draftTimer);
 
  draftTimer=setTimeout(()=>{
-  // Rascunhos são salvos apenas para usuários anônimos válidos.
-  if(user&&!fiscal&&record?.id){
+  // Rascunhos só são sincronizados quando a sessão autoriza este documento.
+  if(user&&!fiscal&&record?.id&&(!user.uid.startsWith('producer_')||user.uid==='producer_'+record.id)){
    window.rtcCloudSave(
     {...record,status:'Rascunho'},
     false

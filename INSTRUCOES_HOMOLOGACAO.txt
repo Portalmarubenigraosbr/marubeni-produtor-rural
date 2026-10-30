@@ -1,0 +1,26 @@
+PORTAL MARUBENI — PACOTE DE HOMOLOGAÇÃO (30/10/2026)
+
+Este pacote contém os 5 arquivos estáticos do site. NÃO publicar na branch main.
+
+AJUSTES REALIZADOS
+- Mantido formulário de 10 etapas, painel Fiscal e design existentes.
+- Acompanhamento CPF/CNPJ -> Worker -> OTP -> Firebase já presente no index.html de origem.
+- Correção: restauração das respostas usa o ID do documento verificado, mesmo se o campo answers.id estiver ausente/diferente.
+- Proteção adicional: sessão producer_ não sincroniza outro documento por engano.
+- Não modifica credenciais, D1, Worker ou painel Fiscal.
+
+PASSOS
+1. Não mexa em main ou produção. Na branch homologacao-painel-fiscal, substitua apenas index.html e firebase-portal.js pelos deste pacote.
+2. Confirme que a hospedagem de homologação usa essa branch.
+3. Abra https://marubeni-fiscal-homologacao.pages.dev/ e teste 'Acompanhar cadastro'.
+4. Use um cadastro fictício com o e-mail permitido pelo Resend sandbox. Receba o código e valide.
+5. Se surgir 'Missing or insufficient permissions', PARE: as regras de Firestore ativas não autorizam o token de produtor. NÃO substitua as regras sem revisar com o administrador: Firebase é compartilhado com produção.
+6. Solicite correção de um cadastro fictício no Fiscal e teste recuperação, edição e reenvio.
+
+IMPORTANTE
+- A confirmação HTTP 200 do Worker não prova que a leitura Firestore pelo site já está autorizada.
+- A notificação automática de 'Correção solicitada' ainda NÃO foi implementada.
+- A permissão Fiscal por qualquer conta com senha e e-mail verificado é ampla e deve ser restrita antes de produção.
+- Sandbox Resend só entrega a endereços permitidos pela conta.
+- Origem do Worker é a URL exata de homologação.
+- Não cole chaves ou tokens no GitHub.

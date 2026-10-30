@@ -514,12 +514,14 @@ document.body.classList.add('landing-mode');
 </script>
 <script type="module" id="rtc-tracking-firebase">
 import {initializeApp,getApps,getApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import {getFunctions,httpsCallable} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js';
+
 import {getAuth,signInWithCustomToken} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {getFirestore,doc,getDoc} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import {firebaseConfig} from './firebase-config.js';
 const app=getApps().length?getApp():initializeApp(firebaseConfig);
-const auth=getAuth(app),db=getFirestore(app),fn=getFunctions(app,'southamerica-east1');
+const auth=getAuth(app),db=getFirestore(app);
+const WORKER='https://marubeni-verificacao-produtor.thales2698.workers.dev';
+async function callWorker(path,data){const r=await fetch(WORKER+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const result=await r.json();if(!r.ok)throw Error(result.error||'Erro na verificação');return result;}
 const $=id=>document.getElementById(id);
 let requestId='',recordId='';
 const messages={'Rascunho':'Cadastro ainda em elaboração.','Pendente Fiscal':'Seu cadastro aguarda análise Fiscal.','Correção solicitada':'O setor Fiscal solicitou ajustes. Consulte o parecer abaixo.','Aprovado Fiscal':'Cadastro aprovado pelo setor Fiscal.'};
@@ -535,14 +537,14 @@ async function showRecord(){
  const canEdit=status==='Correção solicitada';
  $('rtc-track-edit').hidden=!canEdit;
  window.rtcCorrectionId=canEdit?recordId:null;
- if(canEdit)window.rtcRestoreProducerRecord?.(r.answers);
+ if(canEdit)window.rtcRestoreProducerRecord?.(r.answers,recordId);
 }
 window.rtcRefreshTracking=()=>{if(recordId)showRecord().catch(e=>message(e.message));else {$('rtc-track-request').hidden=false;$('rtc-track-verify').hidden=true;$('rtc-track-result').hidden=true;$('rtc-track-loading').hidden=true;}};
 $('rtc-track-request').addEventListener('submit',async e=>{
  e.preventDefault();const btn=$('rtc-track-send');btn.disabled=true;message('Solicitando código...');
  try{
-  const result=await httpsCallable(fn,'solicitarCodigoProdutor')({taxId:$('rtc-track-taxid').value});
-  requestId=result.data.requestId;
+  const result=await callWorker('/solicitar-codigo',{taxId:$('rtc-track-taxid').value});
+  requestId=result.requestId;
   $('rtc-track-request').hidden=true;$('rtc-track-verify').hidden=false;
   message('Se houver cadastro, o código será enviado ao e-mail registrado.');
  }catch(err){message(err.message||'Não foi possível solicitar o código.');}
@@ -551,9 +553,9 @@ $('rtc-track-request').addEventListener('submit',async e=>{
 $('rtc-track-verify').addEventListener('submit',async e=>{
  e.preventDefault();message('Validando código...');
  try{
-  const result=await httpsCallable(fn,'validarCodigoProdutor')({requestId,code:$('rtc-track-code').value.trim()});
-  await signInWithCustomToken(auth,result.data.token);
-  recordId=result.data.recordId;
+  const result=await callWorker('/validar-codigo',{requestId,code:$('rtc-track-code').value.trim()});
+  await signInWithCustomToken(auth,result.token);
+  recordId=result.recordId;
   $('rtc-track-verify').hidden=true;
   await showRecord();
  }catch(err){message(err.message||'Código inválido ou expirado.');}
