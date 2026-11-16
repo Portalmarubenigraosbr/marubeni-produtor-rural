@@ -252,6 +252,28 @@ function back(){
   window.scrollTo(0,0);
 }
 
+// Fase de integração: usa a sessão e a leitura de dados do painel Fiscal já funcional.
+// Não grava aprovações por departamento até que as regras do Firestore sejam publicadas e testadas.
+const workflowResponsibilities=[
+  {number:1,title:'Dados do produtor',teams:['Fiscal']},
+  {number:2,title:'Origem da produção',teams:['Fiscal']},
+  {number:3,title:'Regime tributário',teams:['Fiscal']},
+  {number:4,title:'Vínculos e enquadramento',teams:['Fiscal']},
+  {number:5,title:'Receita rural',teams:['Comercial']},
+  {number:6,title:'Nota fiscal',teams:['Fiscal']},
+  {number:7,title:'Pagamento',teams:['Financeiro']}
+];
+function renderWorkflowResponsibilities(){
+  const target=$('workflow-stages');
+  if(!target)return;
+  target.innerHTML=`<h3>Aprovações por departamento</h3>
+    <p class="muted">Distribuição prevista para as sete etapas de análise. Todos os departamentos poderão consultar o cadastro completo.</p>
+    <div class="wf-grid">${workflowResponsibilities.map(s=>`
+      <div class="wf-item"><b>${s.number}. ${esc(s.title)}</b>
+      <small>Responsável pela aprovação</small><div><span class="wf-tag">${s.teams.map(esc).join(' + ')}</span></div></div>`).join('')}</div>
+    <div class="wf-alert"><strong>Integração em homologação.</strong> O painel continua usando o Firebase e o fluxo Fiscal existentes. Os controles de aprovação por departamento e administração de usuários serão habilitados após a validação das regras de segurança. Nenhuma aprovação por etapa é simulada ou gravada aqui.</div>`;
+}
+
 function renderReview(){
   const r=current();
 
@@ -266,6 +288,7 @@ function renderReview(){
     `Protocolo ${r.id} · ${r.answers?.taxId||'Documento não informado'}`;
 
   $('review-status').innerHTML=badge(r.status);
+  renderWorkflowResponsibilities();
 
   const g=groups(r);
   const reviewed=checked[r.id]||(checked[r.id]=new Set());
