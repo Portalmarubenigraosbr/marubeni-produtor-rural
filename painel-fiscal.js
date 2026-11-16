@@ -130,7 +130,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({
 const authorized=u=>!!u&&!u.isAnonymous&&!!u.email&&u.emailVerified;
 
 let records=[],selectedId=null,unsub=null,checked={},activeFilter='all',saving=false;
-let userProfile=null,workflowPermissions={},workflowDecisions={},workflowBusy=false;
+let userProfile=null,workflowPermissions={},workflowDecisions={},workflowBusy=false,allWorkflowDecisions={},workflowUnsub=null,adminOpen=false;
 
 const isVisible=r=>r.status!=='Rascunho';
 
@@ -178,6 +178,20 @@ function groups(r){
   return out;
 }
 
+function producerWorkflow(id){
+  const decisions=allWorkflowDecisions[id]||{};
+  const approved=workflowResponsibilities.filter(s=>decisions[s.number]?.status==='Aprovado').length;
+  const needsCorrection=workflowResponsibilities.filter(s=>decisions[s.number]?.status==='Correção solicitada');
+  const pending=workflowResponsibilities.filter(s=>!decisions[s.number]||decisions[s.number].status!=='Aprovado');
+  const owners=[...new Set(pending.flatMap(s=>workflowPermissions[s.number]||DEFAULT_PERMISSIONS[s.number]||[]))];
+  return {decisions,approved,needsCorrection,pending,owners};
+}
+function producerWorkflowHtml(id){
+  const w=producerWorkflow(id);
+  const dots=workflowResponsibilities.map(s=>{const status=w.decisions[s.number]?.status;return `<span class="stage-dot ${status==='Aprovado'?'ok':status==='Correção solicitada'?'fix':'wait'}" title="${s.number}. ${esc(s.title)}: ${esc(status||'Pendente')} · ${esc((workflowPermissions[s.number]||DEFAULT_PERMISSIONS[s.number]).join(', '))}"></span>`;}).join('');
+  const msg=w.needsCorrection.length?`Correção solicitada · ${w.needsCorrection.map(s=>esc(s.title)).join(', ')}`:w.approved===7?'Todas as etapas aprovadas':`Aguardando: ${w.owners.map(esc).join(', ')||'Definição de responsáveis'}`;
+  return `<div class="stage-overview" aria-label="${w.approved} de 7 etapas aprovadas">${dots}<small>${w.approved}/7</small></div><div class="stage-owner ${w.needsCorrection.length?'fix':''}"><strong>${msg}</strong></div>`;
+}
 function renderList(){
   const all=records.filter(isVisible);
 
@@ -212,14 +226,14 @@ function renderList(){
   $('producers').innerHTML=items.length
     ?items.map(r=>
       `<button class="producer" data-id="${esc(r.id)}">
-        <span>
+        <div>
           <strong>${esc(r.answers?.name||'Produtor sem nome')}</strong>
           <small>
             CPF/CNPJ: ${esc(r.answers?.taxId||'Não informado')}<br>
             Protocolo: ${esc(r.id)}<br>
             Produto: ${esc(valueText(r.answers?.product)||'Não informado')}
-          </small>
-        </span>
+          </small>${producerWorkflowHtml(r.id)}
+        </div>
         ${badge(r.status)}
       </button>`
     ).join('')
@@ -274,10 +288,12 @@ const canApprove=(number)=>isAdmin()||(!!role()&&(workflowPermissions[number]||D
 const decisionId=(producerId,stage)=>producerId+'__'+stage;
 const fmtDate=v=>v?.toDate?.()?.toLocaleString('pt-BR')||v?.seconds&&new Date(v.seconds*1000).toLocaleString('pt-BR')||'';
 async function loadWorkflow(id){
-  workflowDecisions={};
+  workflowDecisions={...(allWorkflowDecisions[id]||{})};
   try{
     const snap=await getDocs(collection(db,'workflowEtapas'));
     snap.forEach(d=>{const x=d.data();if(x.producerId===id)workflowDecisions[x.stage]=x;});
+    allWorkflowDecisions[id]={...workflowDecisions};
+    renderList();
   }catch(e){console.warn('Sem acesso às aprovações:',e.message);}
   if(selectedId===id)renderWorkflowResponsibilities();
 }
@@ -288,6 +304,7 @@ async function loadPermissions(){
     snap.forEach(d=>{const x=d.data();if(Array.isArray(x.departments))workflowPermissions[Number(d.id)]=x.departments;});
   }catch(e){console.warn('Permissões padrão em uso:',e.message);}
   renderAdmin();
+  if(records.length)renderList();
 }
 async function loadProfile(u){
   userProfile=null;
@@ -365,7 +382,7 @@ async function saveStageDecision(stage,status){
 }
 const targetMemo=n=>document.querySelector(`[data-stage-memo="${n}"]`)?.value.trim()||'';
 function renderAdmin(){
-  const el=$('admin-panel');if(!el)return;el.hidden=!isAdmin();if(!isAdmin())return;
+  const el=$('admin-panel');if(!el)return;el.hidden=!isAdmin()||!adminOpen;$('admin-open').hidden=!isAdmin()||adminOpen;$('admin-close').hidden=!isAdmin()||!adminOpen;if(!isAdmin())return;
   $('admin-permissions').innerHTML=workflowResponsibilities.map(s=>`<div class="wf-item" style="margin:8px 0"><b>${s.number}. ${esc(s.title)}</b>${departments.map(t=>`<label style="display:inline-block;margin:7px 13px 0 0"><input type="checkbox" data-perm-stage="${s.number}" value="${t}" ${(workflowPermissions[s.number]||DEFAULT_PERMISSIONS[s.number]).includes(t)?'checked':''}> ${t}</label>`).join('')}</div>`).join('');
   getDocs(collection(db,'usuariosInternos')).then(s=>{$('admin-users').innerHTML='<h3>Usuários cadastrados</h3>'+s.docs.map(d=>`<div class="answer"><span>${esc(d.data().name||d.data().email||d.id)}</span><strong>${esc(d.data().role||'')} · ${d.data().active?'Ativo':'Inativo'}</strong></div>`).join('');}).catch(e=>{$('admin-users').textContent=e.message;});
 }
@@ -434,6 +451,8 @@ function updateProgress(){
   const decisions=Object.values(workflowDecisions);
   const approved=decisions.filter(d=>d.status==='Aprovado').length;
   $('review-count').textContent=`${approved} de 7 etapas de aprovação concluídas`;
+  const w=producerWorkflow(r.id);
+  $('review-stage-summary').innerHTML=`<strong>Andamento por departamento</strong><div class="stage-summary-grid" style="margin-top:12px">${workflowResponsibilities.map(s=>{const d=workflowDecisions[s.number]||w.decisions[s.number];const state=d?.status==='Aprovado'?'ok':d?.status==='Correção solicitada'?'fix':'wait';const teams=(workflowPermissions[s.number]||DEFAULT_PERMISSIONS[s.number]).join(' / ');return `<div class="stage-summary-cell ${state}" title="${esc(s.title)}"><b>${s.number}</b><div>${esc(teams)}</div><div>${state==='ok'?'✓ Aprovado':state==='fix'?'Correção':'Pendente'}</div></div>`;}).join('')}</div><div class="stage-owner" style="margin-top:12px">${w.needsCorrection.length?'Correção solicitada ao produtor · ':w.approved===7?'Todas as sete etapas aprovadas.':'Aguardando análise de: '}${esc(w.needsCorrection.length?w.needsCorrection.map(s=>s.title).join(', '):w.owners.join(', '))}</div>`;
   $('progress-fill').style.width=`${Math.min(approved,7)/7*100}%`;
 }
 
@@ -506,6 +525,8 @@ $('filter').onchange=e=>{
 };
 
 $('back').onclick=back;
+$('admin-open').onclick=()=>{if(!isAdmin())return;adminOpen=true;$('directory').hidden=true;$('review').hidden=true;renderAdmin();window.scrollTo(0,0);};
+$('admin-close').onclick=()=>{adminOpen=false;$('directory').hidden=false;renderAdmin();window.scrollTo(0,0);};
 
 
 
@@ -514,10 +535,9 @@ $('back').onclick=back;
 $('export').onclick=exportApproved;
 
 onAuthStateChanged(auth,async u=>{
-  if(unsub){
-    unsub();
-    unsub=null;
-  }
+  if(unsub){unsub();unsub=null;}
+  if(workflowUnsub){workflowUnsub();workflowUnsub=null;}
+  adminOpen=false;allWorkflowDecisions={};$('top-nav').hidden=true;$('admin-panel').hidden=true;
 
   if(!authorized(u)){
     $('directory').hidden=true;
@@ -534,6 +554,14 @@ onAuthStateChanged(auth,async u=>{
   $('state').textContent='Conectado: '+u.email+' · Perfil: '+(role()||'Acesso Fiscal legado')+' · Firebase sincronizado';
 
   $('directory').hidden=false;
+  $('top-nav').hidden=false;
+  renderAdmin();
+  workflowUnsub=onSnapshot(collection(db,'workflowEtapas'),snap=>{
+    const next={};snap.forEach(d=>{const x=d.data();if(!x.producerId||!x.stage)return;(next[x.producerId]??={})[x.stage]=x;});
+    allWorkflowDecisions=next;
+    if(selectedId){workflowDecisions={...(next[selectedId]||{})};renderReview();}
+    renderList();
+  },e=>console.warn('Não foi possível carregar o andamento das etapas:',e.message));
 
   unsub=onSnapshot(collection(db,'entrevistas'),snap=>{
     records=snap.docs.map(d=>({
