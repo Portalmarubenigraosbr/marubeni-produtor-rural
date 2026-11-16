@@ -1,7 +1,7 @@
 
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {getAuth,onAuthStateChanged} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
-import {getFirestore,collection,doc,onSnapshot,updateDoc,serverTimestamp,getDoc,getDocs,setDoc,addDoc,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import {getFirestore,collection,doc,onSnapshot,serverTimestamp,getDoc,getDocs,setDoc,addDoc,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import {firebaseConfig} from './firebase-config.js';
 
 const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app),$=id=>document.getElementById(id);
@@ -237,7 +237,7 @@ function openReview(id){
   $('directory').hidden=true;
   $('review').hidden=false;
 
-  $('memo').value=current()?.fiscal?.memo||'';
+
 
   renderReview();
   loadWorkflow(id);
@@ -295,14 +295,17 @@ async function loadProfile(u){
   await loadPermissions();
 }
 function renderWorkflowResponsibilities(){
-  const target=$('workflow-stages');if(!target)return;
-  const r=current();if(!r)return;
-  target.innerHTML=`<h3>Aprovações por departamento</h3><p class="muted">Todos os setores autorizados podem consultar o cadastro. A decisão é registrada individualmente por etapa.</p><div class="wf-grid">${workflowResponsibilities.map(s=>{
-    const d=workflowDecisions[s.number];const allowed=canApprove(s.number);
-    const teams=workflowPermissions[s.number]||DEFAULT_PERMISSIONS[s.number];
-    return `<div class="wf-item"><b>${s.number}. ${esc(s.title)}</b><small>Responsável: ${teams.map(esc).join(' + ')}</small><div>${d?`<span class="pill ${d.status==='Aprovado'?'approved':'correction'}">${esc(d.status)}</span><div class="audit">${esc(d.reviewerEmail||'')} · ${esc(fmtDate(d.decidedAt))}<br>${esc(d.memo||'')}</div>`:'<span class="pill pending">Aguardando análise</span>'}</div>${allowed?`<div class="stage-decision"><textarea data-stage-memo="${s.number}" placeholder="Parecer / justificativa da etapa"></textarea><button class="btn green" data-stage-action="Aprovado" data-stage="${s.number}">Aprovar</button><button class="btn red" data-stage-action="Correção solicitada" data-stage="${s.number}">Solicitar correção</button></div>`:'<div class="muted">Aprovação indisponível para seu perfil.</div>'}</div>`;
-  }).join('')}</div><div class="wf-alert">As decisões por etapa são independentes do status Fiscal legado. A aprovação final do produtor ainda não é alterada automaticamente.</div>`;
-  target.querySelectorAll('[data-stage-action]').forEach(b=>b.onclick=()=>saveStageDecision(Number(b.dataset.stage),b.dataset.stageAction));
+  // O fluxo de decisão fica dentro das seções do formulário antigo.
+  if(selectedId)renderReview();
+}
+const SECTION_APPROVAL={ident:1,origin:2,regime:3,structure:4,revenue:5,invoice:6,payment:7};
+function sectionDecisionHtml(sectionId){
+  const number=SECTION_APPROVAL[sectionId];
+  if(!number)return '';
+  const decision=workflowDecisions[number];
+  const teams=workflowPermissions[number]||DEFAULT_PERMISSIONS[number];
+  const allowed=canApprove(number);
+  return `<div class="wf-item" style="margin-top:15px"><b>Decisão da etapa · ${esc(teams.join(' + '))}</b><div style="margin:8px 0">${decision?`<span class="pill ${decision.status==='Aprovado'?'approved':'correction'}">${esc(decision.status)}</span><div class="audit">${esc(decision.reviewerEmail||'')} · ${esc(fmtDate(decision.decidedAt))}<br>${esc(decision.memo||'')}</div>`:'<span class="pill pending">Aguardando análise</span>'}</div>${allowed?`<textarea data-stage-memo="${number}" placeholder="Parecer / justificativa desta etapa"></textarea><div class="stage-decision"><button class="btn green" data-stage-action="Aprovado" data-stage="${number}">Aprovar etapa</button> <button class="btn red" data-stage-action="Correção solicitada" data-stage="${number}">Solicitar correção</button></div>`:'<p class="muted">Somente os departamentos autorizados podem decidir nesta etapa.</p>'}</div>`;
 }
 async function saveStageDecision(stage,status){
   const r=current();const u=auth.currentUser;if(!r||!u||workflowBusy||!canApprove(stage))return;
@@ -359,8 +362,6 @@ function renderReview(){
     `Protocolo ${r.id} · ${r.answers?.taxId||'Documento não informado'}`;
 
   $('review-status').innerHTML=badge(r.status);
-  renderWorkflowResponsibilities();
-
   const g=groups(r);
   const reviewed=checked[r.id]||(checked[r.id]=new Set());
   const total=g.length;
@@ -380,101 +381,23 @@ function renderReview(){
         ).join('')}
       </div>
 
-      <label class="check">
-        <input
-          type="checkbox"
-          data-stage="${esc(stage.id)}"
-          ${reviewed.has(stage.id)?'checked':''}
-        >
-        Confirmo que revisei esta etapa
-      </label>
+      ${sectionDecisionHtml(stage.id)}
     </details>`
   ).join('')||'<p class="message">Este cadastro não possui respostas. Não é possível aprová-lo.</p>';
 
-  $('sections').querySelectorAll('input[data-stage]').forEach(input=>{
-    input.onchange=()=>{
-      if(input.checked){
-        reviewed.add(input.dataset.stage);
-      }else{
-        reviewed.delete(input.dataset.stage);
-      }
-
-      updateProgress();
-    };
+  $('sections').querySelectorAll('[data-stage-action]').forEach(btn=>{
+    btn.onclick=()=>saveStageDecision(Number(btn.dataset.stage),btn.dataset.stageAction);
   });
 
   updateProgress();
 }
 
 function updateProgress(){
-  const r=current();
-
-  if(!r)return;
-
-  const total=groups(r).length;
-  const done=(checked[r.id]||new Set()).size;
-
-  $('review-count').textContent=`${done} de ${total} etapas revisadas`;
-  $('progress-fill').style.width=`${total?done/total*100:0}%`;
-
-  $('approve').disabled=saving||total===0||done!==total||!(['Fiscal','Administrador'].includes(role())||(!userProfile&&authorized(auth.currentUser)));
-  $('correct').disabled=saving||!(['Fiscal','Administrador'].includes(role())||(!userProfile&&authorized(auth.currentUser)));
-
-  $('review-message').textContent=
-    total&&done===total
-      ?'Todas as etapas conferidas. Registre o parecer e confirme sua decisão.'
-      :'Revise todas as etapas antes de aprovar. É possível solicitar correção com parecer fundamentado.';
-}
-
-async function decide(status){
-  const r=current();
-
-  if(!r||saving)return;
-
-  const memo=$('memo').value.trim();
-
-  if(!memo){
-    alert('Preencha o parecer Fiscal antes de decidir.');
-    $('memo').focus();
-    return;
-  }
-
-  if(
-    status==='Aprovado Fiscal'&&
-    (!groups(r).length||checked[r.id]?.size!==groups(r).length)
-  ){
-    alert('Confira todas as etapas antes de aprovar.');
-    return;
-  }
-
-  if(!confirm(`Confirmar a decisão "${status}" para ${r.answers?.name||'este produtor'}?`)){
-    return;
-  }
-
-  saving=true;
-  updateProgress();
-
-  try{
-    await updateDoc(doc(db,'entrevistas',r.id),{
-      status,
-      fiscal:{
-        memo,
-        reviewer:auth.currentUser.email,
-        reviewAt:new Date().toISOString()
-      },
-      updatedAt:serverTimestamp()
-    });
-
-    back();
-
-  }catch(e){
-    console.error(e);
-    alert('Não foi possível salvar a decisão no Firebase: '+e.message);
-
-  }finally{
-    saving=false;
-    updateProgress();
-  }
+  const r=current();if(!r)return;
+  const decisions=Object.values(workflowDecisions);
+  const approved=decisions.filter(d=>d.status==='Aprovado').length;
+  $('review-count').textContent=`${approved} de 7 etapas de aprovação concluídas`;
+  $('progress-fill').style.width=`${Math.min(approved,7)/7*100}%`;
 }
 
 function exportApproved(){
@@ -547,9 +470,9 @@ $('filter').onchange=e=>{
 
 $('back').onclick=back;
 
-$('approve').onclick=()=>decide('Aprovado Fiscal');
 
-$('correct').onclick=()=>decide('Correção solicitada');
+
+
 
 $('export').onclick=exportApproved;
 
