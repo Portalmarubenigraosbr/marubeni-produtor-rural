@@ -305,38 +305,57 @@ function sectionDecisionHtml(sectionId){
   const decision=workflowDecisions[number];
   const teams=workflowPermissions[number]||DEFAULT_PERMISSIONS[number];
   const allowed=canApprove(number);
-  return `<div class="wf-item" style="margin-top:15px"><b>Decisão da etapa · ${esc(teams.join(' + '))}</b><div style="margin:8px 0">${decision?`<span class="pill ${decision.status==='Aprovado'?'approved':'correction'}">${esc(decision.status)}</span><div class="audit">${esc(decision.reviewerEmail||'')} · ${esc(fmtDate(decision.decidedAt))}<br>${esc(decision.memo||'')}</div>`:'<span class="pill pending">Aguardando análise</span>'}</div>${allowed?`<textarea data-stage-memo="${number}" placeholder="Parecer / justificativa desta etapa"></textarea><div class="stage-decision"><button class="btn green" data-stage-action="Aprovado" data-stage="${number}">Aprovar etapa</button> <button class="btn red" data-stage-action="Correção solicitada" data-stage="${number}">Solicitar correção</button></div>`:'<p class="muted">Somente os departamentos autorizados podem decidir nesta etapa.</p>'}</div>`;
+  return `<div class="wf-item" style="margin-top:15px"><b>Decisão da etapa · ${esc(teams.join(' + '))}</b><div style="margin:8px 0">${decision?`<span class="pill ${decision.status==='Aprovado'?'approved':'correction'}">${esc(decision.status)}</span><div class="audit">${esc(decision.reviewerEmail||'')} · ${esc(fmtDate(decision.decidedAt))}<br>${esc(decision.memo||'')}</div>`:'<span class="pill pending">Aguardando análise</span>'}</div>${allowed?`<textarea data-stage-memo="${number}" placeholder="Parecer / justificativa desta etapa"></textarea><div class="stage-decision"><button class="btn green" data-stage-action="Aprovado" data-stage="${number}">Aprovar etapa</button> <button class="btn red" data-stage-action="Correção solicitada" data-stage="${number}">${decision?.status==='Aprovado'?'Estornar aprovação e solicitar correção':'Solicitar correção'}</button></div>`:'<p class="muted">Somente os departamentos autorizados podem decidir nesta etapa.</p>'}</div>`;
 }
 async function saveStageDecision(stage,status){
-  const r=current();const u=auth.currentUser;if(!r||!u||workflowBusy||!canApprove(stage))return;
-  const memo=targetMemo(stage);if(!memo){alert('Informe um parecer para esta etapa.');return;}
-  if(!confirm(`Confirmar ${status.toLowerCase()} da etapa ${stage}?`))return;
+  const r=current(),u=auth.currentUser;
+  if(!r||!u||workflowBusy||!canApprove(stage))return;
+  const memo=targetMemo(stage);
+  if(!memo){alert('Informe um parecer para esta etapa.');return;}
+  const prior=workflowDecisions[stage];
+  const reversing=prior?.status==='Aprovado' && status==='Correção solicitada';
+  if(!confirm(reversing
+    ? `Estornar a aprovação da etapa ${stage} e solicitar correção ao produtor?`
+    : `Confirmar ${status.toLowerCase()} da etapa ${stage}?`))return;
   workflowBusy=true;
   try{
-    const id=decisionId(r.id,stage);const ref=doc(db,'workflowEtapas',id);
+    const id=decisionId(r.id,stage),ref=doc(db,'workflowEtapas',id);
     await runTransaction(db,async tx=>{
-      // Todas as leituras devem ocorrer antes de qualquer gravação na transação.
+      // Todas as leituras antecedem as gravações; apenas aprovações exigem
+      // consultar as outras seis etapas para detectar a conclusão total.
       const stageRefs=Array.from({length:7},(_,i)=>doc(db,'workflowEtapas',decisionId(r.id,i+1)));
       const snapshots=[];
-      for(const stageRef of stageRefs)snapshots.push(await tx.get(stageRef));
+      if(status==='Aprovado'){
+        for(const stageRef of stageRefs)snapshots.push(await tx.get(stageRef));
+      }else{
+        snapshots[stage-1]=await tx.get(ref);
+      }
       const producerRef=doc(db,'entrevistas',r.id);
       const producerSnap=await tx.get(producerRef);
       if(!producerSnap.exists())throw new Error('Cadastro do produtor não encontrado.');
-      const previous=snapshots[stage-1].exists()?snapshots[stage-1].data():null;
+      const previous=snapshots[stage-1]?.exists()?snapshots[stage-1].data():null;
       const auditRef=doc(collection(db,'workflowAuditoria'));
-      const next={producerId:r.id,stage,status,memo,reviewerUid:u.uid,reviewerEmail:u.email,decidedAt:serverTimestamp(),revision:(previous?.revision||0)+1,eventId:auditRef.id};
-      const allApproved=snapshots.every((snapshot,i)=>
-        (i+1===stage ? status : (snapshot.exists()?snapshot.data().status:null))==='Aprovado'
-      );
+      const next={producerId:r.id,stage,status,memo,reviewerUid:u.uid,reviewerEmail:u.email,
+        decidedAt:serverTimestamp(),revision:(previous?.revision||0)+1,eventId:auditRef.id};
+      const allApproved=status==='Aprovado' && snapshots.every((snapshot,i)=>
+        (i+1===stage?status:(snapshot.exists()?snapshot.data().status:null))==='Aprovado');
       tx.set(ref,next);
       tx.set(auditRef,{...next,decisionId:id});
-      // Atualiza o cadastro na MESMA transação que registra a sétima aprovação.
-      // O status existente é mantido durante as aprovações parciais.
-      if(allApproved && producerSnap.data().status!=='Aprovado Fiscal'){
+      const oldStatus=producerSnap.data().status;
+      let newStatus=null;
+      if(status==='Correção solicitada')newStatus='Correção solicitada';
+      else if(allApproved)newStatus='Aprovado Fiscal';
+      else if(oldStatus==='Aprovado Fiscal' || oldStatus==='Correção solicitada'){
+        // Uma aprovação parcial nunca deve restabelecer a aprovação global.
+        // Mantém a correção pendente até todas as sete etapas estarem aprovadas.
+        newStatus='Correção solicitada';
+      }
+      if(newStatus && newStatus!==oldStatus){
         tx.update(producerRef,{
-          status:'Aprovado Fiscal',
-          updatedAt:serverTimestamp(),
-          fiscal:{reviewer:u.email,memo:'Aprovação automática: 7 de 7 etapas aprovadas.',reviewAt:serverTimestamp()}
+          status:newStatus,updatedAt:serverTimestamp(),
+          fiscal:{reviewer:u.email,memo:allApproved
+            ? 'Aprovação automática: todas as sete etapas aprovadas.'
+            : `Etapa ${stage}: ${memo}`,reviewAt:serverTimestamp()}
         });
       }
     });
