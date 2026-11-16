@@ -1,7 +1,7 @@
 
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {getAuth,onAuthStateChanged} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
-import {getFirestore,collection,doc,onSnapshot,updateDoc,serverTimestamp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import {getFirestore,collection,doc,onSnapshot,updateDoc,serverTimestamp,getDoc,getDocs,setDoc,addDoc,runTransaction} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import {firebaseConfig} from './firebase-config.js';
 
 const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app),$=id=>document.getElementById(id);
@@ -130,6 +130,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({
 const authorized=u=>!!u&&!u.isAnonymous&&!!u.email&&u.emailVerified;
 
 let records=[],selectedId=null,unsub=null,checked={},activeFilter='all',saving=false;
+let userProfile=null,workflowPermissions={},workflowDecisions={},workflowBusy=false;
 
 const isVisible=r=>r.status!=='Rascunho';
 
@@ -239,6 +240,7 @@ function openReview(id){
   $('memo').value=current()?.fiscal?.memo||'';
 
   renderReview();
+  loadWorkflow(id);
   window.scrollTo(0,0);
 }
 
@@ -263,16 +265,83 @@ const workflowResponsibilities=[
   {number:6,title:'Nota fiscal',teams:['Fiscal']},
   {number:7,title:'Pagamento',teams:['Financeiro']}
 ];
-function renderWorkflowResponsibilities(){
-  const target=$('workflow-stages');
-  if(!target)return;
-  target.innerHTML=`<h3>Aprovações por departamento</h3>
-    <p class="muted">Distribuição prevista para as sete etapas de análise. Todos os departamentos poderão consultar o cadastro completo.</p>
-    <div class="wf-grid">${workflowResponsibilities.map(s=>`
-      <div class="wf-item"><b>${s.number}. ${esc(s.title)}</b>
-      <small>Responsável pela aprovação</small><div><span class="wf-tag">${s.teams.map(esc).join(' + ')}</span></div></div>`).join('')}</div>
-    <div class="wf-alert"><strong>Integração em homologação.</strong> O painel continua usando o Firebase e o fluxo Fiscal existentes. Os controles de aprovação por departamento e administração de usuários serão habilitados após a validação das regras de segurança. Nenhuma aprovação por etapa é simulada ou gravada aqui.</div>`;
+const BOOTSTRAP_UID='1IwRe76Z8WMEPhKliKlux5Abuxs1';
+const DEFAULT_PERMISSIONS={1:['Fiscal'],2:['Fiscal'],3:['Fiscal'],4:['Fiscal'],5:['Comercial'],6:['Fiscal'],7:['Financeiro']};
+const departments=['Fiscal','Comercial','Financeiro'];
+const isAdmin=()=>auth.currentUser?.uid===BOOTSTRAP_UID || (userProfile?.active===true&&userProfile?.role==='Administrador');
+const role=()=>isAdmin()?'Administrador':userProfile?.active?userProfile?.role:null;
+const canApprove=(number)=>isAdmin()||(!!role()&&(workflowPermissions[number]||DEFAULT_PERMISSIONS[number]||[]).includes(role()));
+const decisionId=(producerId,stage)=>producerId+'__'+stage;
+const fmtDate=v=>v?.toDate?.()?.toLocaleString('pt-BR')||v?.seconds&&new Date(v.seconds*1000).toLocaleString('pt-BR')||'';
+async function loadWorkflow(id){
+  workflowDecisions={};
+  try{
+    const snap=await getDocs(collection(db,'workflowEtapas'));
+    snap.forEach(d=>{const x=d.data();if(x.producerId===id)workflowDecisions[x.stage]=x;});
+  }catch(e){console.warn('Sem acesso às aprovações:',e.message);}
+  if(selectedId===id)renderWorkflowResponsibilities();
 }
+async function loadPermissions(){
+  workflowPermissions={};
+  try{
+    const snap=await getDocs(collection(db,'workflowPermissoes'));
+    snap.forEach(d=>{const x=d.data();if(Array.isArray(x.departments))workflowPermissions[Number(d.id)]=x.departments;});
+  }catch(e){console.warn('Permissões padrão em uso:',e.message);}
+  renderAdmin();
+}
+async function loadProfile(u){
+  userProfile=null;
+  try{const s=await getDoc(doc(db,'usuariosInternos',u.uid));if(s.exists())userProfile=s.data();}catch(e){console.warn('Perfil indisponível:',e.message);}
+  await loadPermissions();
+}
+function renderWorkflowResponsibilities(){
+  const target=$('workflow-stages');if(!target)return;
+  const r=current();if(!r)return;
+  target.innerHTML=`<h3>Aprovações por departamento</h3><p class="muted">Todos os setores autorizados podem consultar o cadastro. A decisão é registrada individualmente por etapa.</p><div class="wf-grid">${workflowResponsibilities.map(s=>{
+    const d=workflowDecisions[s.number];const allowed=canApprove(s.number);
+    const teams=workflowPermissions[s.number]||DEFAULT_PERMISSIONS[s.number];
+    return `<div class="wf-item"><b>${s.number}. ${esc(s.title)}</b><small>Responsável: ${teams.map(esc).join(' + ')}</small><div>${d?`<span class="pill ${d.status==='Aprovado'?'approved':'correction'}">${esc(d.status)}</span><div class="audit">${esc(d.reviewerEmail||'')} · ${esc(fmtDate(d.decidedAt))}<br>${esc(d.memo||'')}</div>`:'<span class="pill pending">Aguardando análise</span>'}</div>${allowed?`<div class="stage-decision"><textarea data-stage-memo="${s.number}" placeholder="Parecer / justificativa da etapa"></textarea><button class="btn green" data-stage-action="Aprovado" data-stage="${s.number}">Aprovar</button><button class="btn red" data-stage-action="Correção solicitada" data-stage="${s.number}">Solicitar correção</button></div>`:'<div class="muted">Aprovação indisponível para seu perfil.</div>'}</div>`;
+  }).join('')}</div><div class="wf-alert">As decisões por etapa são independentes do status Fiscal legado. A aprovação final do produtor ainda não é alterada automaticamente.</div>`;
+  target.querySelectorAll('[data-stage-action]').forEach(b=>b.onclick=()=>saveStageDecision(Number(b.dataset.stage),b.dataset.stageAction));
+}
+async function saveStageDecision(stage,status){
+  const r=current();const u=auth.currentUser;if(!r||!u||workflowBusy||!canApprove(stage))return;
+  const memo=targetMemo(stage);if(!memo){alert('Informe um parecer para esta etapa.');return;}
+  if(!confirm(`Confirmar ${status.toLowerCase()} da etapa ${stage}?`))return;
+  workflowBusy=true;
+  try{
+    const id=decisionId(r.id,stage);const ref=doc(db,'workflowEtapas',id);
+    await runTransaction(db,async tx=>{
+      const existing=await tx.get(ref);
+      const previous=existing.exists()?existing.data():null;
+      const next={producerId:r.id,stage,status,memo,reviewerUid:u.uid,reviewerEmail:u.email,decidedAt:serverTimestamp(),revision:(previous?.revision||0)+1};
+      tx.set(ref,next);
+    });
+    await loadWorkflow(r.id);
+  }catch(e){console.error(e);alert('Não foi possível registrar a decisão: '+e.message);}
+  finally{workflowBusy=false;}
+}
+const targetMemo=n=>document.querySelector(`[data-stage-memo="${n}"]`)?.value.trim()||'';
+function renderAdmin(){
+  const el=$('admin-panel');if(!el)return;el.hidden=!isAdmin();if(!isAdmin())return;
+  $('admin-permissions').innerHTML=workflowResponsibilities.map(s=>`<div class="wf-item" style="margin:8px 0"><b>${s.number}. ${esc(s.title)}</b>${departments.map(t=>`<label style="display:inline-block;margin:7px 13px 0 0"><input type="checkbox" data-perm-stage="${s.number}" value="${t}" ${(workflowPermissions[s.number]||DEFAULT_PERMISSIONS[s.number]).includes(t)?'checked':''}> ${t}</label>`).join('')}</div>`).join('');
+  getDocs(collection(db,'usuariosInternos')).then(s=>{$('admin-users').innerHTML='<h3>Usuários cadastrados</h3>'+s.docs.map(d=>`<div class="answer"><span>${esc(d.data().name||d.data().email||d.id)}</span><strong>${esc(d.data().role||'')} · ${d.data().active?'Ativo':'Inativo'}</strong></div>`).join('');}).catch(e=>{$('admin-users').textContent=e.message;});
+}
+$('admin-save-user').onclick=async()=>{
+  if(!isAdmin())return;
+  const uid=$('admin-uid').value.trim(),email=$('admin-email').value.trim().toLowerCase(),name=$('admin-name').value.trim(),newRole=$('admin-role').value,active=$('admin-active').checked;
+  if(!/^[A-Za-z0-9]{15,128}$/.test(uid)||!email.includes('@')||!name){alert('Informe UID, e-mail e nome válidos.');return;}
+  if(uid===BOOTSTRAP_UID&&!active){alert('O administrador inicial não pode ser desativado neste fluxo.');return;}
+  try{await setDoc(doc(db,'usuariosInternos',uid),{uid,email,name,role:newRole,active,updatedBy:auth.currentUser.uid,updatedAt:serverTimestamp()});$('admin-message').textContent='Usuário salvo. O UID deve corresponder ao usuário real no Authentication.';renderAdmin();}
+  catch(e){$('admin-message').textContent='Erro ao salvar usuário: '+e.message;}
+};
+$('admin-save-permissions').onclick=async()=>{
+  if(!isAdmin())return;
+  const entries=workflowResponsibilities.map(s=>[s.number,[...document.querySelectorAll(`[data-perm-stage="${s.number}"]:checked`)].map(x=>x.value)]);
+  if(entries.some(([,a])=>!a.length)){alert('Cada etapa precisa ter ao menos um departamento autorizado.');return;}
+  try{for(const [n,departments] of entries)await setDoc(doc(db,'workflowPermissoes',String(n)),{departments,updatedBy:auth.currentUser.uid,updatedAt:serverTimestamp()});$('admin-message').textContent='Permissões atualizadas.';await loadPermissions();}
+  catch(e){$('admin-message').textContent='Erro ao salvar permissões: '+e.message;}
+};
 
 function renderReview(){
   const r=current();
@@ -346,8 +415,8 @@ function updateProgress(){
   $('review-count').textContent=`${done} de ${total} etapas revisadas`;
   $('progress-fill').style.width=`${total?done/total*100:0}%`;
 
-  $('approve').disabled=saving||total===0||done!==total;
-  $('correct').disabled=saving;
+  $('approve').disabled=saving||total===0||done!==total||!(['Fiscal','Administrador'].includes(role())||(!userProfile&&authorized(auth.currentUser)));
+  $('correct').disabled=saving||!(['Fiscal','Administrador'].includes(role())||(!userProfile&&authorized(auth.currentUser)));
 
   $('review-message').textContent=
     total&&done===total
@@ -482,7 +551,7 @@ $('correct').onclick=()=>decide('Correção solicitada');
 
 $('export').onclick=exportApproved;
 
-onAuthStateChanged(auth,u=>{
+onAuthStateChanged(auth,async u=>{
   if(unsub){
     unsub();
     unsub=null;
@@ -498,8 +567,9 @@ onAuthStateChanged(auth,u=>{
     return;
   }
 
-  $('state').textContent=
-    'Conectado: '+u.email+' · Cadastros sincronizados com o Firebase';
+  $('state').textContent='Conectado: '+u.email+' · Verificando permissões...';
+  await loadProfile(u);
+  $('state').textContent='Conectado: '+u.email+' · Perfil: '+(role()||'Acesso Fiscal legado')+' · Firebase sincronizado';
 
   $('directory').hidden=false;
 
