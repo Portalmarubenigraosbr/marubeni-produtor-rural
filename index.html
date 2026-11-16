@@ -248,7 +248,7 @@ body.landing-mode #rtc-tracking,body.form-mode #rtc-tracking{display:none!import
     <button onclick="showDraftHome()">Início</button>
     <button onclick="showDraftForm()">Cadastrar</button>
     <button onclick="showDraftStatus()">Acompanhar</button>
-    <button onclick="window.location.href='perguntas-frequentes.html'">Perguntas frequentes</button><button onclick="showDraftHelp()">Como preencher</button>
+    <button onclick="showDraftHelp()">Como preencher</button>
     <button onclick="window.location.href='contato-fiscal.html'">Contato</button>
   </nav>
   <button class="nav-login" onclick="rtcOpen()">Acesso interno <span aria-hidden="true">♙</span></button>
@@ -529,7 +529,7 @@ window.rtcEditCorrection=()=>{
  else alert('Este cadastro não está disponível para edição neste navegador. Para proteger seus dados, não é possível recuperar as respostas apenas pelo número do protocolo.');
 };
 function showDraftInfo(topic){
- const msgs={faq:'Perguntas frequentes: aqui teremos orientações sobre o cadastro, documentação, prazos e análise Fiscal.',contact:'Contato: aqui serão exibidos os canais oficiais do setor Fiscal da Marubeni, após sua confirmação.',review:'Análise especializada: após o envio, o setor Fiscal validará as informações cadastradas.',partner:'Relacionamento: acompanhamento transparente do cadastro e comunicação com o setor Fiscal.'};
+ const msgs={contact:'Contato: aqui serão exibidos os canais oficiais do setor Fiscal da Marubeni, após sua confirmação.',review:'Análise especializada: após o envio, o setor Fiscal validará as informações cadastradas.',partner:'Relacionamento: acompanhamento transparente do cadastro e comunicação com o setor Fiscal.'};
  alert(msgs[topic]||'Em construção.');
 }
 document.body.classList.add('landing-mode');
