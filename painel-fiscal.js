@@ -314,8 +314,10 @@ async function saveStageDecision(stage,status){
     await runTransaction(db,async tx=>{
       const existing=await tx.get(ref);
       const previous=existing.exists()?existing.data():null;
-      const next={producerId:r.id,stage,status,memo,reviewerUid:u.uid,reviewerEmail:u.email,decidedAt:serverTimestamp(),revision:(previous?.revision||0)+1};
+      const auditRef=doc(collection(db,'workflowAuditoria'));
+      const next={producerId:r.id,stage,status,memo,reviewerUid:u.uid,reviewerEmail:u.email,decidedAt:serverTimestamp(),revision:(previous?.revision||0)+1,eventId:auditRef.id};
       tx.set(ref,next);
+      tx.set(auditRef,{...next,decisionId:id});
     });
     await loadWorkflow(r.id);
   }catch(e){console.error(e);alert('Não foi possível registrar a decisão: '+e.message);}
