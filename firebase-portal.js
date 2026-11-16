@@ -22,11 +22,13 @@ import {
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
+import { getStorage, ref as storageRef, uploadBytes } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
 import { firebaseConfig } from './firebase-config.js';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 let user = null;
 let fiscal = false;
@@ -502,3 +504,15 @@ onAuthStateChanged(auth, async u => {
     }
   }
 });
+
+// Envia o comprovante para Firebase Storage sem torná-lo público.
+window.rtcUploadBankProof = async (recordId, file) => {
+  const current = await ensureProducerAuth();
+  if (!/^[a-zA-Z0-9_-]+$/.test(String(recordId))) throw new Error('Identificador do cadastro inválido.');
+  const types = {'application/pdf':'pdf','image/jpeg':'jpg','image/png':'png'};
+  const ext = types[file?.type];
+  if (!ext || file.size > 5*1024*1024) throw new Error('Comprovante deve ser PDF, JPG ou PNG de até 5 MB.');
+  const objectPath = `comprovantes-bancarios/${current.uid}/${recordId}/${crypto.randomUUID()}.${ext}`;
+  await uploadBytes(storageRef(storage,objectPath),file,{contentType:file.type,customMetadata:{producerRecordId:String(recordId)}});
+  return {path:objectPath,name:file.name.slice(0,180)};
+};
