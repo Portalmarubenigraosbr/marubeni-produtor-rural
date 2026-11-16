@@ -391,7 +391,7 @@ function helpText(s){
  };
  return [...(per[s.id]||[]),...common];
 }
-const SHORT_STAGE_LABELS={ident:'Dados do produtor',origin:'Origem da produção',regime:'Regime tributário',revenue:'Receita rural',product:'Produto',invoice:'Nota fiscal',payment:'Pagamento',logistics:'Transporte',declaration:'Revisão'};
+const SHORT_STAGE_LABELS={ident:'Dados do produtor',origin:'Origem da produção',regime:'Regime tributário',revenue:'Receita rural',product:'Produto',invoice:'Nota fiscal',payment:'Dados financeiros',logistics:'Transporte',declaration:'Revisão'};
 function shortStageLabel(s){return SHORT_STAGE_LABELS[s.id]||s.title;}
 function render(){
  view='form';
@@ -408,7 +408,7 @@ function render(){
  <section class="cadastro-main">
  <div class="cadastro-stage-label"><span class="stage-number">${index+1}</span><div><h2>${esc(formStageTitle(s))}</h2><p>${esc(s.sub)}</p></div></div>
  <div class="card cadastro-fields"><div class="grid">${fields(s).map(control).join('')}</div><div id="errors" class="error" role="alert"></div>
- <div class="actions"><button onclick="back()" ${index===0?'disabled':''}>← Voltar</button><button onclick="saveDraft()">Salvar rascunho</button><span class="spacer"></span><button class="primary" onclick="next()">${index===ss.length-1?'Concluir entrevista':'Continuar →'}</button></div></div>
+ <div class="actions"><button onclick="back()" ${index===0?'disabled':''}>← Voltar</button><button onclick="saveDraft()">Salvar rascunho</button><span class="spacer"></span><button class="primary" onclick="next()">${index===ss.length-1?'Finalizar cadastro':'Continuar →'}</button></div></div>
  <p class="hint">* Campo obrigatório. Quando disponível, utilize “Em análise” para informações ainda não confirmadas. O cadastro será validado pela equipe Fiscal.</p>
  </section>
  <aside class="cadastro-help">
