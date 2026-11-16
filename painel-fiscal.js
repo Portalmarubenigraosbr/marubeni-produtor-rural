@@ -315,12 +315,30 @@ async function saveStageDecision(stage,status){
   try{
     const id=decisionId(r.id,stage);const ref=doc(db,'workflowEtapas',id);
     await runTransaction(db,async tx=>{
-      const existing=await tx.get(ref);
-      const previous=existing.exists()?existing.data():null;
+      // Todas as leituras devem ocorrer antes de qualquer gravação na transação.
+      const stageRefs=Array.from({length:7},(_,i)=>doc(db,'workflowEtapas',decisionId(r.id,i+1)));
+      const snapshots=[];
+      for(const stageRef of stageRefs)snapshots.push(await tx.get(stageRef));
+      const producerRef=doc(db,'entrevistas',r.id);
+      const producerSnap=await tx.get(producerRef);
+      if(!producerSnap.exists())throw new Error('Cadastro do produtor não encontrado.');
+      const previous=snapshots[stage-1].exists()?snapshots[stage-1].data():null;
       const auditRef=doc(collection(db,'workflowAuditoria'));
       const next={producerId:r.id,stage,status,memo,reviewerUid:u.uid,reviewerEmail:u.email,decidedAt:serverTimestamp(),revision:(previous?.revision||0)+1,eventId:auditRef.id};
+      const allApproved=snapshots.every((snapshot,i)=>
+        (i+1===stage ? status : (snapshot.exists()?snapshot.data().status:null))==='Aprovado'
+      );
       tx.set(ref,next);
       tx.set(auditRef,{...next,decisionId:id});
+      // Atualiza o cadastro na MESMA transação que registra a sétima aprovação.
+      // O status existente é mantido durante as aprovações parciais.
+      if(allApproved && producerSnap.data().status!=='Aprovado Fiscal'){
+        tx.update(producerRef,{
+          status:'Aprovado Fiscal',
+          updatedAt:serverTimestamp(),
+          fiscal:{reviewer:u.email,memo:'Aprovação automática: 7 de 7 etapas aprovadas.',reviewAt:serverTimestamp()}
+        });
+      }
     });
     await loadWorkflow(r.id);
   }catch(e){console.error(e);alert('Não foi possível registrar a decisão: '+e.message);}
