@@ -1,0 +1,166 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signed() { return request.auth != null; }
+    function fiscal() {
+      return signed()
+        && request.auth.token.get('email', '') is string
+        && request.auth.token.get('email', '') != ''
+        && request.auth.token.get('email_verified', false) == true
+        && request.auth.token.get('firebase', {}).get('sign_in_provider', '') == 'password';
+    }
+    function verifiedProducer(id) {
+      return signed()
+        && request.auth.token.get('producerRecordId', '') == id
+        && request.auth.token.get('producerUntil', 0) > request.time.toMillis();
+    }
+    function own() { return signed() && resource.data.ownerUid == request.auth.uid; }
+    function fieldsOk() {
+      return request.resource.data.keys().hasOnly([
+        'ownerUid','answers','status','createdAt','updatedAt','fiscal'
+      ])
+        && request.resource.data.answers is map
+        && request.resource.data.answers.keys().size() <= 150
+        && request.resource.data.ownerUid is string;
+    }
+    match /entrevistas/{id} {
+      allow get: if fiscal() || own() || verifiedProducer(id);
+      allow list: if fiscal();
+      allow create: if signed() && !fiscal() && request.auth.token.get('producerRecordId', '') == '' && fieldsOk()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.status in ['Rascunho','Pendente Fiscal']
+        && request.resource.data.fiscal == {};
+      allow update: if (
+        fiscal() && fieldsOk()
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.answers == resource.data.answers
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','fiscal','updatedAt'])
+        && request.resource.data.status in ['Aprovado Fiscal','Correção solicitada','Pendente Fiscal']
+        && request.resource.data.fiscal.reviewer == request.auth.token.get('email', '')
+        && request.resource.data.fiscal.memo is string
+      ) || (
+        (own() || verifiedProducer(id)) && fieldsOk()
+        && resource.data.status in ['Rascunho','Pendente Fiscal','Correção solicitada']
+        && request.resource.data.status in ['Rascunho','Pendente Fiscal']
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.fiscal == resource.data.fiscal
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers','status','updatedAt'])
+      );
+      allow delete: if false;
+    }
+  
+    // FASE 4 SPARK: perfis e etapas; bootstrap imutavel (UID do primeiro administrador)
+    function rootAdmin() {
+      return fiscal() && request.auth.uid == '1IwRe76Z8WMEPhKliKlux5Abuxs1';
+    }
+    function profilePath() {
+      return /databases/$(database)/documents/usuariosInternos/$(request.auth.uid);
+    }
+    function hasProfile() { return fiscal() && exists(profilePath()); }
+    function profile() { return get(profilePath()).data; }
+    function admin() {
+      return rootAdmin() || (hasProfile()
+        && profile().active == true
+        && profile().role == 'Administrador');
+    }
+    function team() {
+      return hasProfile() && profile().active == true
+        && profile().role in ['Fiscal','Comercial','Financeiro'];
+    }
+    function allowedTeam(stage) {
+      let p = /databases/$(database)/documents/workflowPermissoes/$(stage);
+      return team() && exists(p)
+        && profile().role in get(p).data.departments;
+    }
+    function validUser(uid) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['uid','email','name','role','active','updatedBy','updatedAt'])
+        && d.keys().hasAll(['uid','email','name','role','active','updatedBy','updatedAt'])
+        && d.uid == uid
+        && d.email is string && d.email.size() > 3 && d.email.size() <= 254
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 150
+        && d.active is bool
+        && d.role in ['Administrador','Fiscal','Comercial','Financeiro']
+        && d.updatedBy == request.auth.uid
+        && d.updatedAt == request.time;
+    }
+    match /usuariosInternos/{uid} {
+      allow get: if admin() || (fiscal() && request.auth.uid == uid);
+      allow list: if admin();
+      // UID principal imutavel; nenhum administrador pode alterar o proprio perfil.
+      allow create, update: if admin()
+        && uid != '1IwRe76Z8WMEPhKliKlux5Abuxs1'
+        && uid != request.auth.uid
+        && validUser(uid);
+      allow delete: if false;
+    }
+    match /workflowPermissoes/{stage} {
+      allow get, list: if admin() || team();
+      allow create, update: if admin()
+        && stage in ['1','2','3','4','5','6','7']
+        && request.resource.data.keys().hasOnly(['departments','updatedBy','updatedAt'])
+        && request.resource.data.keys().hasAll(['departments','updatedBy','updatedAt'])
+        && request.resource.data.departments is list
+        && request.resource.data.departments.size() >= 1
+        && request.resource.data.departments.size() <= 3
+        && request.resource.data.departments.hasOnly(['Fiscal','Comercial','Financeiro'])
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+    function decisionFields(d) {
+      return d.keys().hasOnly(['producerId','stage','status','memo','reviewerUid','reviewerEmail','decidedAt','revision','eventId'])
+        && d.keys().hasAll(['producerId','stage','status','memo','reviewerUid','reviewerEmail','decidedAt','revision','eventId']);
+    }
+    function validDecision(id) {
+      let d = request.resource.data;
+      let auditPath = /databases/$(database)/documents/workflowAuditoria/$(d.eventId);
+      return decisionFields(d)
+        && d.producerId is string && d.producerId.size() > 0
+        && d.stage is int && d.stage >= 1 && d.stage <= 7
+        && id == d.producerId + '__' + string(d.stage)
+        && exists(/databases/$(database)/documents/entrevistas/$(d.producerId))
+        && d.status in ['Aprovado','Correção solicitada']
+        && d.memo is string && d.memo.size() > 0 && d.memo.size() <= 3000
+        && d.reviewerUid == request.auth.uid
+        && d.reviewerEmail == request.auth.token.get('email','')
+        && d.decidedAt == request.time
+        && d.revision is int && d.revision >= 1
+        && d.eventId is string && d.eventId.size() > 0
+        && !exists(auditPath) && existsAfter(auditPath)
+        && getAfter(auditPath).data.decisionId == id
+        && getAfter(auditPath).data.revision == d.revision
+        && getAfter(auditPath).data.reviewerUid == request.auth.uid
+        && getAfter(auditPath).data.status == d.status
+        && getAfter(auditPath).data.memo == d.memo;
+    }
+    match /workflowEtapas/{id} {
+      allow get, list: if admin() || team();
+      allow create: if (admin() || allowedTeam(string(request.resource.data.stage)))
+        && validDecision(id) && request.resource.data.revision == 1;
+      allow update: if (admin() || allowedTeam(string(request.resource.data.stage)))
+        && validDecision(id)
+        && request.resource.data.producerId == resource.data.producerId
+        && request.resource.data.stage == resource.data.stage
+        && request.resource.data.revision == resource.data.revision + 1;
+      allow delete: if false;
+    }
+    match /workflowAuditoria/{eventId} {
+      allow get, list: if admin() || team();
+      allow create: if (admin() || allowedTeam(string(request.resource.data.stage)))
+        && request.resource.data.keys().hasOnly(['decisionId','producerId','stage','status','memo','reviewerUid','reviewerEmail','revision','eventId','decidedAt'])
+        && request.resource.data.keys().hasAll(['decisionId','producerId','stage','status','memo','reviewerUid','reviewerEmail','revision','eventId','decidedAt'])
+        && request.resource.data.eventId == eventId
+        && request.resource.data.reviewerUid == request.auth.uid
+        && request.resource.data.reviewerEmail == request.auth.token.get('email','')
+        && request.resource.data.decidedAt == request.time
+        && request.resource.data.stage is int
+        && request.resource.data.decisionId == request.resource.data.producerId + '__' + string(request.resource.data.stage)
+        && getAfter(/databases/$(database)/documents/workflowEtapas/$(request.resource.data.decisionId)).data.eventId == eventId
+        && getAfter(/databases/$(database)/documents/workflowEtapas/$(request.resource.data.decisionId)).data.revision == request.resource.data.revision;
+      allow update, delete: if false;
+    }
+  }
+}
