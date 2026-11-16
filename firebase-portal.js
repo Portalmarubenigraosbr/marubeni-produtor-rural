@@ -255,9 +255,19 @@ async function saveRecord(record, final = false) {
   // Isso evita concorrência entre o rascunho automático
   // e a conclusão da entrevista.
   try {
-    const snapshot = await getDoc(ref);
+    // Um cadastro ainda inexistente pode retornar permission-denied no getDoc:
+    // as regras permitem consultar registros do dono, mas não um documento
+    // que ainda não possui ownerUid. Nesse caso, tentar somente CREATE.
+    // O Firestore continua validando ownerUid, status e campos na criação.
+    let snapshot = null;
+    try {
+      snapshot = await getDoc(ref);
+    } catch (readError) {
+      if (readError.code !== 'permission-denied') throw readError;
+      console.info('[Firebase Portal] Consulta inicial sem acesso; tentando criar novo cadastro.');
+    }
 
-    if (!snapshot.exists()) {
+    if (!snapshot || !snapshot.exists()) {
       // NOVO CADASTRO:
       // Os campos correspondem às regras de criação.
       await setDoc(ref, {
