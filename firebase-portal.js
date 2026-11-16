@@ -255,11 +255,25 @@ async function saveRecord(record, final = false) {
   // Isso evita concorrência entre o rascunho automático
   // e a conclusão da entrevista.
   try {
-    const snapshot = await getDoc(ref);
+    // As regras permitem consultar documentos do proprio produtor, mas
+    // podem negar get de um documento ainda inexistente. Nesse caso,
+    // tentamos a criacao diretamente, sem flexibilizar a seguranca.
+    let snapshot = null;
+    let createWithoutRead = false;
+    try {
+      snapshot = await getDoc(ref);
+    } catch (readError) {
+      if (readError.code === 'permission-denied') {
+        createWithoutRead = true;
+      } else {
+        throw readError;
+      }
+    }
 
-    if (!snapshot.exists()) {
-      // NOVO CADASTRO:
-      // Os campos correspondem às regras de criação.
+    if (createWithoutRead || !snapshot.exists()) {
+      // NOVO CADASTRO: a regra de create valida ownerUid e status.
+      // Se o documento ja existir e pertencer a outra sessao, a
+      // operacao sera recusada pelo Firestore (sem sobrescrever dados).
       await setDoc(ref, {
         ownerUid: currentUser.uid,
         answers: record,
