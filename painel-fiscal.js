@@ -13,6 +13,8 @@ const stages=[
     {"key":"type","label":"Tipo de fornecedor"},
     {"key":"taxId","label":"CPF / CNPJ"},
     {"key":"ie","label":"Inscrição estadual / inscrição de produtor"},
+    {"key":"address","label":"Endereço completo"},
+    {"key":"additionalCnpjs","label":"CNPJs adicionais"},
     {"key":"contact","label":"Nome do produtor / representante responsável pelas informações"},
     {"key":"phone","label":"Telefone / WhatsApp"},
     {"key":"email","label":"E-mail"},
@@ -136,7 +138,7 @@ const isVisible=r=>r.status!=='Rascunho';
 
 const badge=s=>`<span class="pill ${s==='Aprovado Fiscal'?'approved':s==='Correção solicitada'?'correction':'pending'}">${esc(s||'Pendente Fiscal')}</span>`;
 
-const valueText=v=>Array.isArray(v)?v.join('; '):v&&typeof v==='object'?JSON.stringify(v):String(v??'');
+const valueText=v=>Array.isArray(v)?v.map(x=>x&&typeof x==='object'&&'cnpj' in x?`CNPJ: ${x.cnpj||''} | Endereço: ${x.address||''} | IE: ${x.ie||''}`:x&&typeof x==='object'?JSON.stringify(x):String(x)).join('; '):v&&typeof v==='object'?JSON.stringify(v):String(v??'');
 
 const current=()=>records.find(r=>r.id===selectedId);
 
@@ -188,8 +190,8 @@ function producerWorkflow(id){
 }
 function producerWorkflowHtml(id){
   const w=producerWorkflow(id);
-  const dots=workflowResponsibilities.map(s=>{const status=w.decisions[s.number]?.status;return `<span class="stage-dot ${status==='Aprovado'?'ok':status==='Correção solicitada'?'fix':'wait'}" title="${s.number}. ${esc(s.title)}: ${esc(status||'Pendente')} · ${esc((workflowPermissions[s.number]||DEFAULT_PERMISSIONS[s.number]).join(', '))}"></span>`;}).join('');
-  const msg=w.needsCorrection.length?`Correção solicitada · ${w.needsCorrection.map(s=>esc(s.title)).join(', ')}`:w.approved===7?'Todas as etapas aprovadas':`Aguardando: ${w.owners.map(esc).join(', ')||'Definição de responsáveis'}`;
+  const dots=workflowResponsibilities.map(s=>{const status=w.decisions[s.number]?.status;return `<span class="stage-dot ${status==='Aprovado'?'ok':status==='Correção solicitada'?'fix':'wait'}" title="${s.number}. ${esc(s.title)}: ${esc(status||'Pendente')} · ${esc((workflowPermissions[s.number]||DEFAULT_PERMISSIONS[s.number]).map(departmentLabel).join(', '))}"></span>`;}).join('');
+  const msg=w.needsCorrection.length?`Correção solicitada · ${w.needsCorrection.map(s=>esc(s.title)).join(', ')}`:w.approved===7?'Todas as etapas aprovadas':`Aguardando: ${w.owners.map(departmentLabel).map(esc).join(', ')||'Definição de responsáveis'}`;
   return `<div class="stage-overview" aria-label="${w.approved} de 7 etapas aprovadas">${dots}<small>${w.approved}/7</small></div><div class="stage-owner ${w.needsCorrection.length?'fix':''}"><strong>${msg}</strong></div>`;
 }
 function renderList(){
@@ -282,6 +284,7 @@ const workflowResponsibilities=[
 const BOOTSTRAP_UID='1IwRe76Z8WMEPhKliKlux5Abuxs1';
 const DEFAULT_PERMISSIONS={1:['Fiscal'],2:['Fiscal'],3:['Fiscal'],4:['Fiscal'],5:['Comercial'],6:['Fiscal'],7:['Financeiro']};
 const departments=['Fiscal','Comercial','Financeiro'];
+const departmentLabel=t=>t==='Comercial'?'Análise de Crédito':t;
 const isAdmin=()=>auth.currentUser?.uid===BOOTSTRAP_UID || (userProfile?.active===true&&userProfile?.role==='Administrador');
 const role=()=>isAdmin()?'Administrador':userProfile?.active?userProfile?.role:null;
 const canApprove=(number)=>isAdmin()||(!!role()&&(workflowPermissions[number]||DEFAULT_PERMISSIONS[number]||[]).includes(role()));
@@ -322,7 +325,7 @@ function sectionDecisionHtml(sectionId){
   const decision=workflowDecisions[number];
   const teams=workflowPermissions[number]||DEFAULT_PERMISSIONS[number];
   const allowed=canApprove(number);
-  return `<div class="wf-item" style="margin-top:15px"><b>Decisão da etapa · ${esc(teams.join(' + '))}</b><div style="margin:8px 0">${decision?`<span class="pill ${decision.status==='Aprovado'?'approved':'correction'}">${esc(decision.status)}</span><div class="audit">${esc(decision.reviewerEmail||'')} · ${esc(fmtDate(decision.decidedAt))}<br>${esc(decision.memo||'')}</div>`:'<span class="pill pending">Aguardando análise</span>'}</div>${allowed?`<textarea data-stage-memo="${number}" placeholder="Parecer / justificativa desta etapa"></textarea><div class="stage-decision"><button class="btn green" data-stage-action="Aprovado" data-stage="${number}">Aprovar etapa</button> <button class="btn red" data-stage-action="Correção solicitada" data-stage="${number}">${decision?.status==='Aprovado'?'Estornar aprovação e solicitar correção':'Solicitar correção'}</button></div>`:'<p class="muted">Somente os departamentos autorizados podem decidir nesta etapa.</p>'}</div>`;
+  return `<div class="wf-item" style="margin-top:15px"><b>Decisão da etapa · ${esc(teams.map(departmentLabel).join(' + '))}</b><div style="margin:8px 0">${decision?`<span class="pill ${decision.status==='Aprovado'?'approved':'correction'}">${esc(decision.status)}</span><div class="audit">${esc(decision.reviewerEmail||'')} · ${esc(fmtDate(decision.decidedAt))}<br>${esc(decision.memo||'')}</div>`:'<span class="pill pending">Aguardando análise</span>'}</div>${allowed?`<textarea data-stage-memo="${number}" placeholder="Parecer / justificativa desta etapa"></textarea><div class="stage-decision"><button class="btn green" data-stage-action="Aprovado" data-stage="${number}">Aprovar etapa</button> <button class="btn red" data-stage-action="Correção solicitada" data-stage="${number}">${decision?.status==='Aprovado'?'Estornar aprovação e solicitar correção':'Solicitar correção'}</button></div>`:'<p class="muted">Somente os departamentos autorizados podem decidir nesta etapa.</p>'}</div>`;
 }
 async function saveStageDecision(stage,status){
   const r=current(),u=auth.currentUser;
@@ -383,8 +386,8 @@ async function saveStageDecision(stage,status){
 const targetMemo=n=>document.querySelector(`[data-stage-memo="${n}"]`)?.value.trim()||'';
 function renderAdmin(){
   const el=$('admin-panel');if(!el)return;el.hidden=!isAdmin()||!adminOpen;$('admin-open').hidden=!isAdmin()||adminOpen;$('admin-close').hidden=!isAdmin()||!adminOpen;if(!isAdmin())return;
-  $('admin-permissions').innerHTML=workflowResponsibilities.map(s=>`<div class="wf-item" style="margin:8px 0"><b>${s.number}. ${esc(s.title)}</b>${departments.map(t=>`<label style="display:inline-block;margin:7px 13px 0 0"><input type="checkbox" data-perm-stage="${s.number}" value="${t}" ${(workflowPermissions[s.number]||DEFAULT_PERMISSIONS[s.number]).includes(t)?'checked':''}> ${t}</label>`).join('')}</div>`).join('');
-  getDocs(collection(db,'usuariosInternos')).then(s=>{$('admin-users').innerHTML='<h3>Usuários cadastrados</h3>'+s.docs.map(d=>`<div class="answer"><span>${esc(d.data().name||d.data().email||d.id)}</span><strong>${esc(d.data().role||'')} · ${d.data().active?'Ativo':'Inativo'}</strong></div>`).join('');}).catch(e=>{$('admin-users').textContent=e.message;});
+  $('admin-permissions').innerHTML=workflowResponsibilities.map(s=>`<div class="wf-item" style="margin:8px 0"><b>${s.number}. ${esc(s.title)}</b>${departments.map(t=>`<label style="display:inline-block;margin:7px 13px 0 0"><input type="checkbox" data-perm-stage="${s.number}" value="${t}" ${(workflowPermissions[s.number]||DEFAULT_PERMISSIONS[s.number]).includes(t)?'checked':''}> ${esc(departmentLabel(t))}</label>`).join('')}</div>`).join('');
+  getDocs(collection(db,'usuariosInternos')).then(s=>{$('admin-users').innerHTML='<h3>Usuários cadastrados</h3>'+s.docs.map(d=>`<div class="answer"><span>${esc(d.data().name||d.data().email||d.id)}</span><strong>${esc(departmentLabel(d.data().role||''))} · ${d.data().active?'Ativo':'Inativo'}</strong></div>`).join('');}).catch(e=>{$('admin-users').textContent=e.message;});
 }
 $('admin-save-user').onclick=async()=>{
   if(!isAdmin())return;
@@ -452,7 +455,7 @@ function updateProgress(){
   const approved=decisions.filter(d=>d.status==='Aprovado').length;
   $('review-count').textContent=`${approved} de 7 etapas de aprovação concluídas`;
   const w=producerWorkflow(r.id);
-  $('review-stage-summary').innerHTML=`<strong>Andamento por departamento</strong><div class="stage-summary-grid" style="margin-top:12px">${workflowResponsibilities.map(s=>{const d=workflowDecisions[s.number]||w.decisions[s.number];const state=d?.status==='Aprovado'?'ok':d?.status==='Correção solicitada'?'fix':'wait';const teams=(workflowPermissions[s.number]||DEFAULT_PERMISSIONS[s.number]).join(' / ');return `<div class="stage-summary-cell ${state}" title="${esc(s.title)}"><b>${s.number}</b><div>${esc(teams)}</div><div>${state==='ok'?'✓ Aprovado':state==='fix'?'Correção':'Pendente'}</div></div>`;}).join('')}</div><div class="stage-owner" style="margin-top:12px">${w.needsCorrection.length?'Correção solicitada ao produtor · ':w.approved===7?'Todas as sete etapas aprovadas.':'Aguardando análise de: '}${esc(w.needsCorrection.length?w.needsCorrection.map(s=>s.title).join(', '):w.owners.join(', '))}</div>`;
+  $('review-stage-summary').innerHTML=`<strong>Andamento por departamento</strong><div class="stage-summary-grid" style="margin-top:12px">${workflowResponsibilities.map(s=>{const d=workflowDecisions[s.number]||w.decisions[s.number];const state=d?.status==='Aprovado'?'ok':d?.status==='Correção solicitada'?'fix':'wait';const teams=(workflowPermissions[s.number]||DEFAULT_PERMISSIONS[s.number]).map(departmentLabel).join(' / ');return `<div class="stage-summary-cell ${state}" title="${esc(s.title)}"><b>${s.number}</b><div>${esc(teams)}</div><div>${state==='ok'?'✓ Aprovado':state==='fix'?'Correção':'Pendente'}</div></div>`;}).join('')}</div><div class="stage-owner" style="margin-top:12px">${w.needsCorrection.length?'Correção solicitada ao produtor · ':w.approved===7?'Todas as sete etapas aprovadas.':'Aguardando análise de: '}${esc(w.needsCorrection.length?w.needsCorrection.map(s=>s.title).join(', '):w.owners.map(departmentLabel).join(', '))}</div>`;
   $('progress-fill').style.width=`${Math.min(approved,7)/7*100}%`;
 }
 
@@ -551,7 +554,7 @@ onAuthStateChanged(auth,async u=>{
 
   $('state').textContent='Conectado: '+u.email+' · Verificando permissões...';
   await loadProfile(u);
-  $('state').textContent='Conectado: '+u.email+' · Perfil: '+(role()||'Acesso Fiscal legado')+' · Firebase sincronizado';
+  $('state').textContent='Conectado: '+u.email+' · Perfil: '+(departmentLabel(role())||'Acesso Fiscal legado')+' · Firebase sincronizado';
 
   $('directory').hidden=false;
   $('top-nav').hidden=false;
