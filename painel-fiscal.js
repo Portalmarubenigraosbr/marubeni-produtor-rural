@@ -465,66 +465,54 @@ function updateProgress(){
   $('progress-fill').style.width=`${Math.min(approved,7)/7*100}%`;
 }
 
+const EXPORT_FIELDS = [["ident", "operationDate", "Data prevista da venda à Marubeni", "date"], ["ident", "name", "Nome completo / razão social", "text"], ["ident", "type", "Tipo de fornecedor", "radio"], ["ident", "taxId", "CPF / CNPJ", "text"], ["ident", "ie", "Inscrição estadual / inscrição de produtor", "text"], ["ident", "address", "Endereço completo", "text"], ["ident", "additionalCnpjs", "Outros CNPJs", "additionalCnpjs"], ["ident", "contact", "Nome do produtor / representante responsável pelas informações", "text"], ["ident", "phone", "Telefone / WhatsApp", "text"], ["ident", "email", "E-mail do produtor (obrigatório para acompanhamento e correções)", "email"], ["ident", "accountant", "Contador / escritório e CRC (opcional)", "text"], ["ident", "accountantConfirmed", "O contador validou o enquadramento informado? (opcional)", "radio"], ["ident", "accountantContact", "Contato do contador (opcional)", "text"], ["ident", "registry", "CAEPF / identificação IBS-CBS e situação cadastral", "text"], ["origin", "area", "Relação principal com a área", "select"], ["origin", "own", "Esta operação envolve somente produção própria?", "text"], ["origin", "third", "Também comercializa grãos de terceiros?", "text"], ["origin", "thirdDetails", "Origem de terceiros e segregação dos lotes", "textarea"], ["origin", "ruralOnly", "As atividades são exclusivamente rurais?", "text"], ["origin", "otherActivities", "Outras atividades e respectivas receitas", "textarea"], ["origin", "integration", "Existe contrato de integração vertical?", "text"], ["origin", "integrationOperation", "Esta operação decorre do contrato de integração?", "text"], ["origin", "integrationDetails", "Integrador, CNPJ, contrato, vigência e remuneração", "textarea"], ["regime", "simple", "A pessoa jurídica é optante pelo Simples Nacional?", "text"], ["regime", "hybrid", "Apura IBS/CBS fora do DAS, pelo regime regular?", "text"], ["regime", "hybridStart", "Início dos efeitos da opção pelo regime regular", "date"], ["regime", "hybridEnd", "Fim do período comprovado da opção", "date"], ["regime", "option", "Houve opção voluntária pelo regime regular?", "text"], ["regime", "optionRequest", "Data do pedido de opção", "date"], ["regime", "optionStart", "Início dos efeitos da opção comprovado", "date"], ["regime", "renunciation", "Houve renúncia de opção anterior?", "text"], ["regime", "renunciationDate", "Data da renúncia", "date"], ["regime", "renunciationEffect", "Início dos efeitos da renúncia informado pelo contador", "date"], ["regime", "optionEvidence", "Referência dos comprovantes de opção / renúncia", "textarea"], ["structure", "participation", "Possui participação em outra PJ agropecuária?", "text"], ["structure", "participations", "CNPJ, nome, participação e receitas por ano de cada PJ", "textarea"], ["structure", "coopMembers", "Todos os integrantes são produtores PF abaixo do limite aplicável?", "text"], ["structure", "coopDetails", "Quantidade, relação dos integrantes e evidência de receitas", "textarea"], ["revenue", "revenueKnown", "Há dados de receita suficientes para a análise?", "text"], ["revenue", "started", "Iniciou a atividade no ano da operação?", "text"], ["revenue", "startDate", "Início da atividade", "date"], ["revenue", "revenue2024", "Receita rural de 2024 (R$)", "number"], ["revenue", "previousRevenue", "Receita rural do ano anterior (R$)", "number"], ["revenue", "currentRevenue", "Receita rural acumulada no ano da operação (R$)", "number"], ["revenue", "revenueThrough", "Receita apurada até", "date"], ["revenue", "projection", "Receita rural projetada até 31/12 (R$)", "number"], ["revenue", "combinedPrevious", "Receita TOTAL combinada do ano anterior (R$)", "number"], ["revenue", "combinedCurrent", "Receita TOTAL combinada acumulada (R$)", "number"], ["revenue", "segregation", "Existem receitas que exigem segregação?", "select"], ["revenue", "revenueMemo", "Memória de apuração e segregações", "textarea"], ["revenue", "excessDate", "Data em que ultrapassou o limite", "date"], ["revenue", "excess20Date", "Data em que ultrapassou 120% do limite", "date"], ["revenue", "revenueEvidence", "Referência da declaração / relatório de receita", "textarea"], ["invoice", "invoice", "Documento emitido", "select"], ["invoice", "issuer", "Responsável pela emissão", "select"], ["invoice", "system", "Sistema, modelo / série e estabelecimento emitente", "text"], ["invoice", "ready", "Sistema preparado para os campos IBS/CBS aplicáveis?", "text"], ["invoice", "registration", "Inscrições e cadastros exigidos estão ativos e regulares?", "text"], ["invoice", "buyerInvoice", "Está ciente da emissão pelo adquirente quando exigida para crédito presumido?", "text"], ["invoice", "funrural", "FUNRURAL", "radio"], ["invoice", "ratGilrat", "RAT/GILRAT", "radio"], ["invoice", "senar", "SENAR", "radio"], ["invoice", "subrogacao", "Sub-rogação", "radio"], ["payment", "reconciliation", "Consegue conciliar pagamentos com notas e contratos?", "text"], ["payment", "cpr", "Existe CPR, cessão ou trava financeira vinculada?", "text"], ["payment", "cprDetail", "Instrumento, instituição e impactos", "textarea"], ["declaration", "declarant", "Nome do declarante e qualidade da representação", "text"], ["declaration", "declarationRef", "Confirmação do responsável (nome completo)", "text"], ["declaration", "notes", "Observações e pendências adicionais", "textarea"], ["declaration", "accept", "Você confirma as informações e se compromete a comunicar alterações?", "radio"]];
 function exportApproved(){
   const items=records.filter(r=>r.status==='Aprovado Fiscal');
-
-  if(!items.length){
-    alert('Não há cadastros aprovados para exportar.');
-    return;
+  if(!items.length){alert('Não há cadastros aprovados para exportar.');return;}
+  const known=new Set(EXPORT_FIELDS.map(f=>f[1]));
+  const extras=[...new Set(items.flatMap(r=>Object.keys(r.answers||{})))].filter(k=>!known.has(k)).sort();
+  const maxCnpj=Math.max(0,...items.map(r=>Array.isArray(r.answers?.additionalCnpjs)?r.answers.additionalCnpjs.length:0));
+  const cols=[];
+  for(const [stage,key,label,type] of EXPORT_FIELDS){
+    cols.push({label,get:r=>r.answers?.[key]??'',numeric:type==='number'});
+    if(key==='additionalCnpjs')for(let i=0;i<maxCnpj;i++)for(const [k,l] of [['cnpj','CNPJ'],['address','Endereço'],['ie','Inscrição estadual']])cols.push({label:`${l} adicional ${i+1}`,get:r=>r.answers?.additionalCnpjs?.[i]?.[k]??''});
   }
-
-  const known=stages.flatMap(s=>s.fields.map(f=>[f.key,f.label]));
-  const keys=[...new Set(items.flatMap(r=>Object.keys(r.answers||{})))];
-  const labels=Object.fromEntries(known);
-
-  const header=[
-    'Protocolo',
-    'Status',
-    'Fiscal responsável',
-    'Data da aprovação',
-    'Parecer Fiscal',
-    ...keys.map(k=>labels[k]||k)
-  ];
-
-  const protect=v=>{
-    let s=valueText(v);
-
-    if(/^[=+\-@\t\r]/.test(s)){
-      s="'"+s;
-    }
-
-    return '"'+s.replace(/"/g,'""')+'"';
-  };
-
-  const rows=items.map(r=>[
-    r.id,
-    r.status,
-    r.fiscal?.reviewer||'',
-    r.fiscal?.reviewAt||'',
-    r.fiscal?.memo||'',
-    ...keys.map(k=>r.answers?.[k]??'')
-  ]);
-
-  const content='\uFEFF'+[header,...rows]
-    .map(row=>row.map(protect).join(';'))
-    .join('\r\n');
-
-  const blob=new Blob([content],{
-    type:'text/csv;charset=utf-8'
-  });
-
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-
-  a.href=url;
-  a.download='Marubeni_Produtores_Aprovados_Excel.csv';
-
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-
-  setTimeout(()=>URL.revokeObjectURL(url),4000);
+  for(const k of extras)cols.push({label:`Complementar — ${k}`,get:r=>r.answers?.[k]??''});
+  cols.push(...[
+    ['Protocolo',r=>r.id],['Status',r=>r.status],['Fiscal responsável',r=>r.fiscal?.reviewer],['Data da aprovação',r=>fmtDate(r.fiscal?.reviewAt)||r.fiscal?.reviewAt||''],['Parecer Fiscal',r=>r.fiscal?.memo]
+  ].map(([label,get])=>({label,get})));
+  for(const s of workflowResponsibilities)for(const [label,key] of [['Status','status'],['Responsável','reviewerEmail'],['Data','decidedAt'],['Parecer','memo']])cols.push({label:`Etapa ${s.number} — ${s.title} — ${label}`,get:r=>{const v=allWorkflowDecisions[r.id]?.[s.number]?.[key];return key==='decidedAt'?fmtDate(v):v??'';}});
+  const rows=[cols.map(c=>c.label),...items.map(r=>cols.map(c=>{const v=c.get(r);return c.numeric&&v!==''&&v!=null&&Number.isFinite(Number(v))?Number(v):valueText(v);}))];
+  try{
+    const blob=new Blob([exportWorkbook(rows)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Marubeni_Produtores_Aprovados.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),4000);
+  }catch(e){console.error(e);alert('Não foi possível gerar o Excel: '+e.message);}
 }
+function exportWorkbook(rows){
+  const xml=s=>String(s??'').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const col=i=>{let s='';for(i++;i;i=Math.floor((i-1)/26))s=String.fromCharCode(65+(i-1)%26)+s;return s;};
+  if(rows[0].length>16384||rows.length>1048576)throw Error('Limite de linhas ou colunas do Excel excedido.');
+  const range=`A1:${col(rows[0].length-1)}${rows.length}`;
+  const ns='http://schemas.openxmlformats.org/spreadsheetml/2006/main', rel='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const sheet=`<worksheet xmlns="${ns}"><dimension ref="${range}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${rows[0].map((v,i)=>`<col min="${i+1}" max="${i+1}" width="${Math.min(55,Math.max(20,v.length*.65))}" customWidth="1"/>`).join('')}</cols><sheetData>${rows.map((r,i)=>`<row r="${i+1}"${i===0?' ht="42" customHeight="1"':''}>${r.map((v,j)=>{const ref=col(j)+(i+1);if(typeof v==='number')return `<c r="${ref}"><v>${v}</v></c>`;if(String(v??'').length>32767)throw Error('Uma resposta excede o limite de caracteres do Excel.');return `<c r="${ref}" t="inlineStr"${i===0?' s="1"':''}><is><t xml:space="preserve">${xml(v)}</t></is></c>`;}).join('')}</row>`).join('')}</sheetData><autoFilter ref="${range}"/></worksheet>`;
+  const files={
+    '[Content_Types].xml':'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>',
+    '_rels/.rels':`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+    'xl/workbook.xml':`<workbook xmlns="${ns}" xmlns:r="${rel}"><sheets><sheet name="Produtores aprovados" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+    'xl/_rels/workbook.xml.rels':`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${rel}/styles" Target="styles.xml"/></Relationships>`,
+    'xl/styles.xml':`<styleSheet xmlns="${ns}"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF19354D"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`,
+    'xl/worksheets/sheet1.xml':sheet
+  };
+  const enc=new TextEncoder(),parts=[],central=[];let offset=0,total=0;
+  const crc=b=>{let c=0xffffffff;for(const x of b){c^=x;for(let j=0;j<8;j++)c=(c>>>1)^((c&1)?0xedb88320:0);}return (c^0xffffffff)>>>0;};
+  for(const [name,content] of Object.entries(files)){
+    const n=enc.encode(name),d=enc.encode(content),sum=crc(d),l=new Uint8Array(30),v=new DataView(l.buffer);v.setUint32(0,0x04034b50,true);v.setUint16(4,20,true);v.setUint16(12,33,true);v.setUint32(14,sum,true);v.setUint32(18,d.length,true);v.setUint32(22,d.length,true);v.setUint16(26,n.length,true);
+    const c=new Uint8Array(46),w=new DataView(c.buffer);w.setUint32(0,0x02014b50,true);w.setUint16(4,20,true);w.setUint16(6,20,true);w.setUint16(14,33,true);w.setUint32(16,sum,true);w.setUint32(20,d.length,true);w.setUint32(24,d.length,true);w.setUint16(28,n.length,true);w.setUint32(42,offset,true);parts.push(l,n,d);central.push(c,n);offset+=l.length+n.length+d.length;total+=c.length+n.length;
+  }
+  const end=new Uint8Array(22),e=new DataView(end.buffer),count=Object.keys(files).length;e.setUint32(0,0x06054b50,true);e.setUint16(8,count,true);e.setUint16(10,count,true);e.setUint32(12,total,true);e.setUint32(16,offset,true);
+  return new Blob([...parts,...central,end]);
+}
+
 
 $('search').oninput=renderList;
 
