@@ -6,6 +6,10 @@ import {
   onAuthStateChanged,
   signInAnonymously,
   signInWithEmailAndPassword,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  inMemoryPersistence,
+  initializeAuth,
   signOut,
   setPersistence,
   browserLocalPersistence,
@@ -141,7 +145,61 @@ window.rtcSavedRecords = () => {
   }
 };
 
+// Separate in-memory authentication prevents the public session listener
+// from signing out an unverified user before the verification email is sent.
+let verificationAuth;
+let accountActionBusy = false;
+async function accountAction(kind) {
+  if (accountActionBusy) return;
+  const email = el('rtc-email')?.value.trim().toLowerCase();
+  const password = el('rtc-pass')?.value;
+  const error = el('rtc-error');
+  const info = el('rtc-auth-info');
+  error.textContent = ''; info.textContent = '';
+  if (!email || (kind === 'verify' && !password)) {
+    error.textContent = kind === 'verify' ? 'Informe seu e-mail e senha para solicitar a verificação.' : 'Informe seu e-mail para redefinir a senha.';
+    return;
+  }
+  accountActionBusy = true;
+  const buttons = [el('rtc-verify-email'), el('rtc-reset-password')];
+  buttons.forEach(b => b.disabled = true);
+  try {
+    if (kind === 'reset') {
+      await sendPasswordResetEmail(auth, email);
+      info.textContent = 'Se a conta estiver cadastrada, você receberá um link para redefinir sua senha. Confira também o spam.';
+    } else {
+      if (!verificationAuth) {
+        const verificationApp = initializeApp(firebaseConfig, 'marubeni-email-verification');
+        verificationAuth = initializeAuth(verificationApp, { persistence: inMemoryPersistence });
+      }
+      const result = await signInWithEmailAndPassword(verificationAuth, email, password);
+      if (result.user.emailVerified) {
+        info.textContent = 'Seu e-mail já está verificado. Entre normalmente no painel.';
+      } else {
+        await sendEmailVerification(result.user);
+        info.textContent = 'Link de verificação enviado. Confira sua caixa de entrada e spam, confirme o e-mail e entre novamente no painel.';
+      }
+    }
+  } catch (e) {
+    if (kind === 'reset' && e.code === 'auth/user-not-found') {
+      info.textContent = 'Se a conta estiver cadastrada, você receberá um link para redefinir sua senha.';
+    } else {
+      error.textContent = e.code === 'auth/too-many-requests' ? 'Muitas tentativas. Aguarde alguns minutos e tente novamente.' : 'Não foi possível concluir a solicitação. Confira os dados e tente novamente.';
+    }
+  } finally {
+    if (kind === 'verify' && verificationAuth?.currentUser) {
+      try { await signOut(verificationAuth); } catch (e) { err(e); }
+    }
+    accountActionBusy = false;
+    buttons.forEach(b => b.disabled = false);
+  }
+}
+window.rtcVerifyEmail = () => accountAction('verify');
+window.rtcResetPassword = () => accountAction('reset');
+
 window.rtcLogin = async () => {
+  if (accountActionBusy) return;
+  if (el('rtc-auth-info')) el('rtc-auth-info').textContent = '';
   const email = el('rtc-email')?.value.trim().toLowerCase();
   const pass = el('rtc-pass')?.value;
 
