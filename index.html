@@ -269,7 +269,7 @@ body.landing-mode #rtc-tracking,body.form-mode #rtc-tracking{display:none!import
     <button class="landing-feature" onclick="showDraftStatus()"><span class="feature-icon">▥</span><strong>Acompanhamento</strong><small>Consulte o andamento do seu cadastro.</small></button>
     <button class="landing-feature" onclick="showDraftInfo('partner')"><span class="feature-icon">◆</span><strong>Relacionamento</strong><small>Mais agilidade e segurança para você.</small></button>
   </div>
-  <div class="landing-help"><div><span class="help-icon">▢</span><span><strong>Dúvidas?</strong><small>Nossa equipe está à disposição para ajudar.</small></span></div><button onclick="window.location.href='contato-fiscal.html'">Canais oficiais do Fiscal</button></div>
+  <div class="landing-help"><div><span class="help-icon">▢</span><span><strong>Dúvidas?</strong><small>Nossa equipe está à disposição para ajudar.</small></span></div><button onclick="window.location.href='contato-fiscal.html'">Canais oficiais</button></div>
 </section>
 <section id="draft-view-top" class="draft-view-top" hidden>
 <button onclick="showDraftHome()">← Voltar ao início</button>
@@ -600,4 +600,10 @@ $('rtc-track-verify').addEventListener('submit',async e=>{
 });
 $('rtc-track-update').addEventListener('click',()=>showRecord().catch(e=>message(e.message)));
 </script>
-<script type="module" src="./firebase-portal.js"></script></body></html>
+<script type="module" src="./firebase-portal.js"></script><script type="module">
+const secao = new URLSearchParams(location.search).get('secao');
+const destinos = {inicio:()=>window.showDraftHome(),cadastrar:()=>window.showDraftForm(),acompanhar:()=>window.showDraftStatus(),ajuda:()=>window.showDraftHelp(),interno:()=>window.rtcOpen()};
+if (Object.prototype.hasOwnProperty.call(destinos,secao)) {
+  window.addEventListener('load',()=>{destinos[secao]();const url=new URL(location.href);url.searchParams.delete('secao');history.replaceState(null,'',url);},{once:true});
+}
+</script></body></html>
