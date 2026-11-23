@@ -24,7 +24,6 @@ const stages=[
     {"key":"registry","label":"CAEPF / identificação IBS-CBS e situação cadastral"}
   ]},
   {"id":"origin","title":"De onde vem a produção?","fields":[
-    {"key":"properties","label":"Propriedades e estabelecimentos"},
     {"key":"area","label":"Relação principal com a área"},
     {"key":"own","label":"Esta operação envolve somente produção própria?"},
     {"key":"third","label":"Também comercializa grãos de terceiros?"},
