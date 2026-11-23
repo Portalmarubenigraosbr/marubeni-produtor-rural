@@ -408,7 +408,7 @@ function render(){
  document.getElementById('steps').innerHTML=ss.map((x,i)=>`<div class="step ${i===index?'active':''}"><i>${i<index?'✓':i+1}</i><span>${esc(x.title)}</span></div>`).join('');
  document.getElementById('draft-steps-bar').innerHTML=ss.map((x,i)=>`<button class="stage-chip stage-card ${i===index?'current':''}" onclick="goDraftStep(${i})" title="${esc(x.title)}" aria-current="${i===index?'step':'false'}"><span class="stage-card-icon">${monoStageIcon(x.id)}</span><span class="stage-card-name">${esc(shortStageLabel(x))}</span><small>${i===index?'Em preenchimento':i<index?'Etapa visitada':'Acessar etapa'}</small></button>`).join('');
  document.getElementById('app').innerHTML=`
- <section class="cadastro-heading" style="--stage-photo:url('${stagePhotos[s.id]||stagePhotos.ident}')">
+ <section class="cadastro-heading" >
    <div><div class="eyebrow">CADASTRO DO PRODUTOR RURAL</div><h1>Preencha seu cadastro com tranquilidade</h1><p>Informe os dados solicitados. Você pode navegar entre as etapas e salvar seu rascunho.</p></div>
    <div class="cadastro-progress"><strong>Etapa ${index+1} de ${ss.length}</strong><span>${percent}% do percurso</span><div class="progress"><div style="width:${percent}%"></div></div></div>
  </section>
@@ -429,7 +429,14 @@ function render(){
  </aside>
  </div>`;
  const banner=document.querySelector('#app .cadastro-heading');
- if(banner)document.getElementById('draft-cadastro-banner').replaceChildren(banner);
+ if(banner){
+ document.getElementById('draft-cadastro-banner').replaceChildren(banner);
+ const photo=stagePhotos[s.id]||stagePhotos.ident;
+ banner.style.setProperty('background-image', 'linear-gradient(90deg,rgba(15,34,24,.78),rgba(15,34,24,.33)), url("'+photo+'")', 'important');
+ banner.style.setProperty('background-size','cover','important');
+ banner.style.setProperty('background-position','center 52%','important');
+ banner.style.setProperty('background-repeat','no-repeat','important');
+}
 }
 
 function validTax(v){let n=v.replace(/\D/g,'');if(![11,14].includes(n.length)||/^(\d)\1+$/.test(n))return false;let calc=(base,weights)=>{let r=base.split('').reduce((s,c,i)=>s+Number(c)*weights[i],0)%11;return r<2?0:11-r};if(n.length===11)return calc(n.slice(0,9),[10,9,8,7,6,5,4,3,2])===+n[9]&&calc(n.slice(0,10),[11,10,9,8,7,6,5,4,3,2])===+n[10];return calc(n.slice(0,12),[5,4,3,2,9,8,7,6,5,4,3,2])===+n[12]&&calc(n.slice(0,13),[6,5,4,3,2,9,8,7,6,5,4,3,2])===+n[13]}
